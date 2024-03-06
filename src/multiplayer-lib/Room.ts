@@ -90,15 +90,8 @@ export class Room {
 
             if (this.host) {
                 if (sessionDescription) {
-                    const desc = new RTCSessionDescription(sessionDescription)
-                    this.player.peerConnection.response(desc).then(
-                        () => {
-                            console.log("OK")
-                        },
-                        (e) => {
-                            console.error("Failed", e)
-                        },
-                    )
+                    console.debug("Have RTC answer", sessionDescription)
+                    this.player.peerConnection.response(sessionDescription)
                 } else {
                     console.error(
                         "Player connected without RTC answer, expected by host",

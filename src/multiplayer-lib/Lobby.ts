@@ -102,9 +102,15 @@ export class Lobby {
             throw new Error("Lobby missing local player")
         }
 
-        const sessionDescription = await this.player.peerConnection.offer()
+        const { offer, iceCandidates } =
+            await this.player.peerConnection.offer()
 
-        this.ws?.send("player-host-game", { name, options, sessionDescription })
+        this.ws?.send("player-host-game", {
+            name,
+            options,
+            sessionDescription: offer,
+            iceCandidates,
+        })
 
         type ReplyMessageData = ServerReplyData<"player-host-game-reply">
 
@@ -156,7 +162,7 @@ export class Lobby {
             throw Error("Room host does not have peer connection")
         }
 
-        // console.debug("Building peer connection answer")
+        console.debug("Answering RTC offer")
         const answer = await this.player.peerConnection.answer(
             host.sessionDescription,
         )
@@ -171,6 +177,12 @@ export class Lobby {
         const data = (await this.ws?.waitForMessage<ReplyMessageData>(
             "player-join-game-reply",
         )) as unknown as RoomRecord
+
+        if (!host.iceCandidates) {
+            throw Error("Room host does not have ice candidates")
+        }
+
+        await this.player.peerConnection.setIceCandidates(host.iceCandidates)
 
         this.room = new Room(this.ws!, data, this.player)
         return this.room
