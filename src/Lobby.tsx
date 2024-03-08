@@ -1,39 +1,9 @@
 import { useContext, useEffect, useState } from "react"
-import { LobbyContext } from "./LobbyProvider"
-import LobbyProvider from "./LobbyProvider"
-import { RoomRecord } from "game-signaling-server"
-
-const PeerConnectionStatus = () => {
-    const { player } = useContext(LobbyContext)
-    const [status, setStatus] = useState("unknown")
-
-    useEffect(() => {
-        let timeout: number | undefined
-        const updateStatus = () => {
-            if (!player) {
-                setStatus("Invalid player")
-            } else if (!player.peerConnection) {
-                setStatus("Invalid peer connection")
-            } else if (player.peerConnection.connected) {
-                setStatus("Peer connected")
-            } else {
-                setStatus("Peer disconnected")
-            }
-
-            timeout = window.setTimeout(updateStatus, 1000)
-        }
-
-        timeout = window.setTimeout(updateStatus, 1000)
-
-        return () => {
-            if (timeout) {
-                window.clearTimeout(timeout)
-            }
-        }
-    }, [player, player?.peerConnection])
-
-    return <div>Peer: {status}</div>
-}
+import { RoomRecord, ServerReplyData } from "game-signaling-server"
+import { LocalPlayer, Room as LobbyRoom } from "./multiplayer-lib"
+import SignalingServerContextProvider, {
+    SignalingServerContext,
+} from "./SignalingServerContext"
 
 const GameList = ({
     selected,
@@ -42,23 +12,61 @@ const GameList = ({
     selected: RoomRecord | null
     onSelect: (room: RoomRecord) => void
 }) => {
-    const { lobby } = useContext(LobbyContext)
-    const [rooms, setRooms] = useState<RoomRecord[]>([])
+    const { ws, rooms, setRooms } = useContext(SignalingServerContext)
 
-    if (!lobby) {
-        throw new Error("")
+    const handleRoomCreated = (room: RoomRecord) => {
+        if (!setRooms) {
+            throw new Error("")
+        }
+
+        console.debug("Room created", room)
+        setRooms((state) => [...state, room])
     }
 
-    // FIXME should subscribe, not request
+    const handleRoomDeleted = (room: Pick<RoomRecord, "id">) => {
+        if (!setRooms) {
+            throw new Error("")
+        }
+
+        console.debug("Room deleted", room)
+        setRooms((state: RoomRecord[]) => {
+            const index = state.findIndex((r) => r.id === room.id)
+
+            if (index !== -1) {
+                state.splice(index, 1)
+            }
+
+            return [...state]
+        })
+    }
 
     useEffect(() => {
+        ws?.subscribe({
+            "lobby-room-created": handleRoomCreated,
+            "lobby-room-deleted": handleRoomDeleted,
+        })
+    }, [ws])
+
+    // Must request game list on first load
+    useEffect(() => {
+        if (!setRooms) {
+            throw new Error("")
+        }
+
         const queryLobbyRooms = async () => {
-            const resp = await lobby.list()
-            setRooms(resp)
+            ws?.send("player-list-games")
+
+            type ReplyMessageData = ServerReplyData<"player-list-games-reply">
+
+            const resp = (await ws?.waitForMessage<ReplyMessageData>(
+                "player-list-games-reply",
+            )) as unknown as { games: RoomRecord[] }
+
+            setRooms(resp.games)
         }
 
         queryLobbyRooms()
-    }, [lobby])
+    }, [ws])
 
     return (
         <div style={{}}>
@@ -127,22 +135,18 @@ const LobbyRoot = ({
 type LobbyState = "browser" | "joining" | "in-room"
 
 const Lobby = () => {
-    const { lobby } = useContext(LobbyContext)
+    const { player, host, join } = useContext(SignalingServerContext)
     const [state, setState] = useState<LobbyState>("browser")
 
-    if (!lobby) {
-        throw new Error("")
-    }
-
     const handleHost = async () => {
-        const resp = await lobby.host("My Game", { maxPlayers: 4 })
+        const resp = await host("My Game", { maxPlayers: 4 })
         if (resp) {
             setState("in-room")
         }
     }
 
     const handleJoin = async (room: RoomRecord) => {
-        const resp = await lobby.join(room)
+        const resp = await join(room)
         if (room) {
             setState("in-room")
         }
@@ -153,15 +157,14 @@ const Lobby = () => {
         case "browser":
             content = <LobbyRoot onHost={handleHost} onJoin={handleJoin} />
             break
+        case "hosting":
+            content = <RoomInitializer name="My Game" options={{ maxPlayers: 4}} />
+            break
         case "joining":
+            content = <RoomInitializer id={room.id}
             break
         case "in-room":
-            content = (
-                <div>
-                    <PeerConnectionStatus />
-                    in room {lobby.room?.name}
-                </div>
-            )
+            content = <div>room</div> // <Room room={lobby.room} player={player} />
             break
 
         default:
@@ -172,20 +175,24 @@ const Lobby = () => {
 }
 
 const LobbyContainer = () => {
-    const { connected, connect } = useContext(LobbyContext)
+    const { connected, connect, disconnect } = useContext(
+        SignalingServerContext,
+    )
 
     useEffect(() => {
         connect()
-    }, [])
+
+        return () => disconnect()
+    }, [connect, disconnect])
 
     return connected ? <Lobby /> : <div>Connecting...</div>
 }
 
 const LobbyBase = () => {
     return (
-        <LobbyProvider>
+        <SignalingServerContextProvider>
             <LobbyContainer />
-        </LobbyProvider>
+        </SignalingServerContextProvider>
     )
 }
 
