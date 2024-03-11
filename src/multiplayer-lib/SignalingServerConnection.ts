@@ -1,17 +1,18 @@
 import {
     ClientMessages,
+    ServerMessages,
     ServerMessageHandler,
     ServerReplyMessages,
 } from "game-signaling-server"
 
-// type ServerMessagesLocal = Omit<ServerMessages, "server-error">
+type ServerMessagesLocal = Omit<ServerMessages, "server-error">
 
-// export type ServerMessageHandlerLocal = {
-//     [K in keyof ServerMessagesLocal]: [
-//         (data: ServerMessagesLocal[K]["data"]) => void,
-//         { once?: boolean } | undefined,
-//     ]
-// }
+export type ServerMessageHandlerLocal = {
+    [K in keyof ServerMessagesLocal]: [
+        (data: ServerMessagesLocal[K]["data"]) => void,
+        { once?: boolean } | undefined,
+    ]
+}
 
 export class SignalingServerConnection {
     private ws?: WebSocket
@@ -26,18 +27,6 @@ export class SignalingServerConnection {
     get connected() {
         return this.ws?.readyState === WebSocket.OPEN
     }
-
-    // subscribe2<K extends keyof ServerMessagesLocal>(
-    //     name: K,
-    //     callback: ServerMessageHandlerLocal[K][0],
-    //     options?: { once?: boolean },
-    // ) {
-    //     if (this.subscriptions[name]) {
-    //         throw new Error(`Subscription already exists for '${name}'`)
-    //     }
-
-    //     this.subscriptions[name] = [callback, options]
-    // }
 
     handleMessageModern = (ev: MessageEvent) => {
         console.debug("Received message", ev.data)
@@ -62,8 +51,33 @@ export class SignalingServerConnection {
         }
     }
 
+    subscribe2<K extends keyof ServerMessagesLocal>(
+        name: K,
+        callback: ServerMessageHandlerLocal[K][0],
+        options?: { once?: boolean },
+    ) {
+        if (this.subscriptions[name]) {
+            throw new Error(`Subscription already exists for '${name}'`)
+        }
+
+        this.subscriptions[name] = callback
+    }
+
     subscribe(handlers: Partial<ServerMessageHandler>) {
         this.subscriptions = { ...this.subscriptions, ...handlers }
+    }
+
+    unsubscribe<K extends keyof ServerMessagesLocal>(
+        name: K,
+        callback?: ServerMessageHandlerLocal[K][0],
+    ) {
+        if (!this.subscriptions[name]) {
+            throw new Error(`Subscription does not exist for '${name}'`)
+        }
+
+        if (!callback || this.subscriptions[name] === callback) {
+            delete this.subscriptions[name]
+        }
     }
 
     // FIXME use message name, not string.
@@ -153,59 +167,48 @@ export class SignalingServerConnection {
         })
     }
 
+    private handleOpen = async () => {
+        return new Promise((resolve, reject) => {
+            console.debug("WebSocket opened")
+        })
+    }
+
+    private handleClose = () => {}
+
     /**
      *
      * @param name
      * @returns
      */
-    async connect(timeout: number = 30000): Promise<boolean> {
+    async connect(timeout: number = 30000): Promise<void> {
         // FIXME connect with timeout, register, wait for registration response
         return new Promise((resolve, reject) => {
             this.ws = new WebSocket(`ws://${this.address}/`, [])
 
-            const handleFailedToConnect = (ev: Event) => {
-                console.log("WebSocket error", ev)
-                reject(ev)
+            this.ws.onopen = () => {
+                if (this.ws?.readyState === WebSocket.OPEN) {
+                    resolve()
+                } else {
+                    reject()
+                }
             }
 
-            this.ws.addEventListener(
-                "open",
-                () => {
-                    console.debug("WebSocket opened")
+            this.ws.onmessage = this.handleMessageModern
+            this.ws.onerror = this.handleError
 
-                    if (this.ws) {
-                        this.ws.removeEventListener(
-                            "error",
-                            handleFailedToConnect,
-                        )
-
-                        this.ws.addEventListener("error", this.handleErrorBind)
-                    }
-
-                    resolve(true)
-                },
-                { once: true },
-            )
-
-            this.ws.addEventListener("message", this.handleMessageModern)
-
-            this.ws.addEventListener(
-                "close",
-                (code, reason) => {
-                    console.log("WebSocket closed", code, reason)
-                },
-                { once: true },
-            )
-
-            this.ws.addEventListener("error", handleFailedToConnect, {
-                once: true,
-            })
+            this.ws.onclose = () => {
+                if (this.ws) {
+                    this.ws.onopen = null
+                    this.ws.onclose = null
+                    this.ws.onmessage = null
+                    this.ws.onerror = null
+                }
+            }
         })
     }
 
     disconnect() {
         if (this.ws) {
-            this.ws.removeAllListeners()
             this.ws.close()
         }
     }
@@ -214,12 +217,16 @@ export class SignalingServerConnection {
         name: T,
         data?: ClientMessages[T]["data"],
     ) {
-        if (this.ws) {
+        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
             this.ws.send(
                 JSON.stringify({
                     name,
                     data: data,
                 }),
+            )
+        } else {
+            console.warn(
+                `Attempted to send message '${name}' before WebSocket was connected`,
             )
         }
     }
@@ -252,7 +259,7 @@ export class SignalingServerConnection {
         }
     }
 
-    private handleError(error: string) {
-        console.log("WebSocket error", error)
+    private handleError(event: Event) {
+        console.log("WebSocket error", event)
     }
 }
