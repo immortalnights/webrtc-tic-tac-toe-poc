@@ -21,27 +21,27 @@ export class PeerConnection {
         this.pc = new RTCPeerConnection({ bundlePolicy: "balanced" })
 
         // debug logging
-        this.pc.addEventListener("icecandidateerror", (e) =>
-            console.debug("icecandidateerror", e),
-        )
-        this.pc.addEventListener("icegatheringstatechange", (e) =>
-            console.debug("icegatheringstatechange", e),
-        )
-        this.pc.addEventListener("negotiationneeded", (e) =>
-            console.debug("negotiationneeded", e),
-        )
-        this.pc.addEventListener("signalingstatechange", (e) =>
-            console.debug("signalingstatechange", e),
-        )
-        this.pc.addEventListener("track", (e) => console.debug("track", e))
+        // this.pc.addEventListener("icecandidateerror", (e) =>
+        //     console.debug("icecandidateerror", e),
+        // )
+        // this.pc.addEventListener("icegatheringstatechange", (e) =>
+        //     console.debug("icegatheringstatechange", e),
+        // )
+        // this.pc.addEventListener("negotiationneeded", (e) =>
+        //     console.debug("negotiationneeded", e),
+        // )
+        // this.pc.addEventListener("signalingstatechange", (e) =>
+        //     console.debug("signalingstatechange", e),
+        // )
+        // this.pc.addEventListener("track", (e) => console.debug("track", e))
 
-        this.pc.addEventListener("connectionstatechange", (event) => {
-            console.debug("pc.connectionstatechange", event)
-        })
+        // this.pc.addEventListener("connectionstatechange", (event) => {
+        //     console.debug("pc.connectionstatechange", event)
+        // })
 
-        this.pc.addEventListener("iceconnectionstatechange", (event) =>
-            console.debug("pc.iceConnectionStateChange", event),
-        )
+        // this.pc.addEventListener("iceconnectionstatechange", (event) =>
+        //     console.debug("pc.iceConnectionStateChange", event),
+        // )
         // end debug
 
         this.pc.addEventListener("datachannel", (event) => {
@@ -100,6 +100,7 @@ export class PeerConnection {
 
     async answer(
         offer: RTCSessionDescriptionLike,
+        iceCandidates: RTCIceCandidateLike[],
     ): Promise<RTCSessionDescriptionInit> {
         console.assert(
             "type" in offer && offer.type === "offer",
@@ -110,6 +111,8 @@ export class PeerConnection {
 
         const answer = await this.pc.createAnswer()
         await this.pc.setLocalDescription(answer)
+
+        await this.setIceCandidates(iceCandidates)
 
         return answer
     }
