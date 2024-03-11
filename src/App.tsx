@@ -44,11 +44,16 @@ function App() {
             break
         case "lobby":
             // onStart // onLeave
-            content = <Lobby />
+            content = (
+                <Lobby
+                    onStart={() => setState("in-game")}
+                    onLeave={() => setState("main-menu")}
+                />
+            )
             break
         case "in-game":
+            content = <div>Game...</div>
             break
-
         default:
             break
     }
