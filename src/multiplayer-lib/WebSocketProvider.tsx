@@ -14,7 +14,7 @@ export interface WebSocketContextValue {
     status: ConnectionStatus
     connect: () => void
     subscribe: (name: string, callback: (data: object) => void) => void
-    unsubscribe: (name: string, callback?: (data: object) => void) => void
+    unsubscribe: (name: string, callback: (data: object) => void) => void
     send: (name: string, data: object | undefined) => void
     sendWithReply: (
         name: string,
@@ -184,7 +184,7 @@ export const WebSocketContextProvider = ({
             return new Promise<object | undefined>((resolve, reject) => {
                 if (ws.current && ws.current.readyState === WebSocket.OPEN) {
                     const timeout = window.setTimeout(() => {
-                        reject("Timeout waiting for reply message")
+                        reject(`Timeout waiting for ${replyName} message`)
                         ws.current?.removeEventListener(
                             "message",
                             handleMessage,
