@@ -39,6 +39,22 @@ export const useLobby = () => {
             ).then((data: object | undefined) => {
                 setPlayer(data as unknown as PlayerRecord)
             })
+
+            sendWithReply(
+                "player-list-players",
+                { name },
+                "player-list-players-reply",
+            ).then((data: object | undefined) => {
+                setRooms(data as unknown as RoomRecord[])
+            })
+
+            sendWithReply(
+                "player-list-games",
+                { name },
+                "player-list-games-reply",
+            ).then((data: object | undefined) => {
+                setPlayers(data as unknown as PlayerRecord[])
+            })
         }
 
         joinLobby()
