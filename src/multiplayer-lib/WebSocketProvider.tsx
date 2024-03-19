@@ -26,12 +26,22 @@ export interface WebSocketContextValue {
 
 export const WebSocketContext = createContext<WebSocketContextValue>({
     status: "disconnected",
-    connect: () => {},
-    subscribe: () => {},
-    unsubscribe: () => {},
-    send: () => {},
+    connect: () => {
+        throw new Error("Called abstract function")
+    },
+    subscribe: () => {
+        throw new Error("Called abstract function")
+    },
+    unsubscribe: () => {
+        throw new Error("Called abstract function")
+    },
+    send: () => {
+        throw new Error("Called abstract function")
+    },
     sendWithReply: () => Promise.reject(),
-    disconnect: () => {},
+    disconnect: () => {
+        throw new Error("Called abstract function")
+    },
 })
 
 interface Subscription {
@@ -47,7 +57,7 @@ export const WebSocketContextProvider = ({
 }) => {
     const ws = useRef<WebSocket>()
     const [status, setStatus] = useState<ConnectionStatus>("disconnected")
-    const [subscriptions, setSubscriptions] = useState<Subscription>([])
+    const [subscriptions, setSubscriptions] = useState<Subscription>({})
 
     // Used by `handleClose` so needs to be defined before it.
     const disconnect = useCallback(() => {
@@ -67,13 +77,12 @@ export const WebSocketContextProvider = ({
             ws.current.onclose = null
             ws.current.onerror = null
             setStatus("disconnected")
-            console.debug("set disconnected state")
             ws.current = undefined
         }
     }, [])
 
     const handleOpen = useCallback((event: Event) => {
-        console.log("handleOpen", event)
+        console.debug("WebSocket.handleOpen", event)
 
         if (!ws.current) {
             throw new Error("WebSocket has not been initialized")
@@ -88,7 +97,7 @@ export const WebSocketContextProvider = ({
 
     const handleMessage = useCallback(
         (event: MessageEvent) => {
-            console.log("handleMessage", event)
+            console.debug("WebSocket.handleMessage", event)
 
             if (!ws.current) {
                 throw new Error("WebSocket has not been initialized")
@@ -107,12 +116,12 @@ export const WebSocketContextProvider = ({
                 console.debug(`No subscribers for ${name}`, subscriptions)
             }
         },
-        [ws, subscriptions],
+        [subscriptions],
     )
 
     const handleClose = useCallback(
         (event: Event) => {
-            console.log("handleClose", event)
+            console.debug("WebSocket.handleClose", event)
 
             if (!ws.current) {
                 throw new Error("WebSocket has not been initialized")
@@ -124,27 +133,37 @@ export const WebSocketContextProvider = ({
     )
 
     const handleError = useCallback((event: Event) => {
-        console.log("handleError", event)
+        console.debug("WebSocket.handleError", event)
 
         if (!ws.current) {
             throw new Error("WebSocket has not been initialized")
         }
     }, [])
 
-    const connect = useCallback(() => {
+    const connect = useCallback(async () => {
         console.log("Connecting...")
         setStatus("connecting")
         ws.current = new WebSocket(`ws://${address}/`, [])
-    }, [address])
 
-    useEffect(() => {
-        if (ws.current && (status === "connected" || status === "connecting")) {
-            ws.current.onopen = handleOpen
-            ws.current.onmessage = handleMessage
-            ws.current.onclose = handleClose
-            ws.current.onerror = handleError
-        }
-    }, [status, handleOpen, handleMessage, handleClose, handleError])
+        const tick = 250
+        return new Promise<void>((resolve, reject) => {
+            const checkConnection = () => {
+                if (ws.current) {
+                    if (ws.current.readyState === WebSocket.CONNECTING) {
+                        window.setTimeout(checkConnection, tick)
+                    } else if (ws.current.readyState === WebSocket.OPEN) {
+                        resolve()
+                    } else {
+                        reject(new Error("Failed to connect"))
+                    }
+                } else {
+                    reject(new Error("Invalid WebSocket instance"))
+                }
+            }
+
+            setTimeout(checkConnection, tick)
+        })
+    }, [address])
 
     const subscribe = useCallback(
         (name: string, callback: (data: object) => void) => {
@@ -158,16 +177,23 @@ export const WebSocketContextProvider = ({
 
     const unsubscribe = useCallback(
         (name: string, callback: (data: object) => void) => {
-            setSubscriptions((prevSubscriptions) => ({
-                ...prevSubscriptions,
-                [name]: prevSubscriptions[name].filter((cb) => cb !== callback),
-            }))
+            setSubscriptions((prevSubscriptions) =>
+                prevSubscriptions[name]
+                    ? {
+                          ...prevSubscriptions,
+                          [name]: prevSubscriptions[name].filter(
+                              (cb) => cb !== callback,
+                          ),
+                      }
+                    : {},
+            )
         },
         [],
     )
 
     const send = useCallback((name: string, data: object | undefined) => {
         if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+            console.debug(`Sending ${name}`)
             ws.current.send(
                 JSON.stringify({
                     name,
@@ -213,6 +239,24 @@ export const WebSocketContextProvider = ({
         },
         [send],
     )
+
+    useEffect(() => {
+        if (ws.current && (status === "connected" || status === "connecting")) {
+            ws.current.onopen = handleOpen
+            ws.current.onmessage = handleMessage
+            ws.current.onclose = handleClose
+            ws.current.onerror = handleError
+        }
+
+        return () => {
+            if (ws.current) {
+                ws.current.onopen = null
+                ws.current.onmessage = null
+                ws.current.onclose = null
+                ws.current.onerror = null
+            }
+        }
+    }, [status, handleOpen, handleMessage, handleClose, handleError])
 
     const value = useMemo(
         () => ({
