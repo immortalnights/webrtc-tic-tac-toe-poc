@@ -1,125 +1,103 @@
-import { useEffect, useState, ComponentType, useCallback } from "react"
+import { useEffect, useState, useCallback } from "react"
 import "./App.css"
 import { useWebSocket } from "./multiplayer-lib/useWebSocket"
 import { WebSocketContextProvider } from "./multiplayer-lib/WebSocketProvider"
+import { LobbyRoom, LobbyRoomItem, LobbyWithConnector } from "./Lobby"
+import { MainMenu } from "./MainMenu"
 import { useLobby } from "./multiplayer-lib/useLobby"
+import { RoomRecord } from "game-signaling-server"
 
 type State = "main-menu" | "lobby" | "in-game"
 
-const LocalLobby = ({
-    onStart,
-    onLeave,
-}: {
-    onStart: () => void
-    onLeave: () => void
-}) => {
-    const { player, host, join, leave } = useLobby()
+const Lobby = ({ onLeave }: { onLeave: () => void }) => {
+    const { status } = useWebSocket()
+    const { host, join, rooms } = useLobby()
+    const [room, setRoom] = useState<RoomRecord | undefined>(undefined)
 
-    return (
-        <div>
-            <div>Local Lobby</div>
-            <div>
-                <small>
-                    Player: {player.name} {player.id}
-                </small>
-            </div>
-            <div>
-                <button onClick={onLeave}>Leave</button>
-                <button onClick={onStart}>Start</button>
-            </div>
-        </div>
-    )
-}
+    // why do you not have the rooms!?
+    console.debug("Lobby.render", rooms)
 
-const withConnector = <TProps,>(WrappedComponent: ComponentType<TProps>) => {
-    const WithConnector = (props: TProps) => {
-        const { status } = useWebSocket()
-
-        let content
-        if (status === "connected") {
-            content = <WrappedComponent {...(props as TProps)} />
-        } else if (status === "connecting") {
-            content = <div>Connecting...</div>
-        } else if (status === "disconnected") {
-            content = <div>Disconnected</div>
-        }
-
-        return content
+    const handleHost = async () => {
+        const newRoom = await host("MyGame", {})
+        setRoom(newRoom)
     }
 
-    return WithConnector
+    const handleJoin = async (room: RoomRecord) => {
+        const newRoom = await join(room)
+        setRoom(newRoom)
+    }
+
+    let content
+    if (status === "connected") {
+        if (room) {
+            content = <LobbyRoom room={room} />
+        } else {
+            content = (
+                <div>
+                    <div>
+                        {rooms.map((room) => (
+                            <LobbyRoomItem record={room} onJoin={handleJoin} />
+                        ))}
+                    </div>
+                    <div>
+                        <button onClick={handleHost}>Host</button>
+                    </div>
+                </div>
+            )
+        }
+    } else if (status === "connecting") {
+        content = <div>Connecting</div>
+    } else if (status === "disconnected") {
+        content = <div>Disconnected</div>
+    }
+
+    return content
 }
 
-const LocalGame = ({ onLeave }: { onLeave: () => void }) => {
-    const { status } = useWebSocket()
-
-    return (
-        <div>
-            <div>Local Game ({status})</div>
-            <div>
-                <button onClick={onLeave}>Leave</button>
-            </div>
-        </div>
-    )
+const LobbyConnector = ({ onLeave }: { onLeave: () => void }) => {
+    let content
+    switch (status) {
+        case "connected":
+            content = (
+                <div>
+                    Connected
+                    <Lobby onLeave={onLeave} />
+                </div>
+            )
+            break
+        case "connecting":
+            content = <div>Connecting</div>
+            break
+        case "disconnected":
+            content = <div>Disconnected</div>
+            break
+        default:
+            content = <div>Unknown Error</div>
+            break
+    }
+    return content
 }
-
-const MainMenu = ({
-    onPlay,
-    onMultiplayer: onMultiplayer,
-}: {
-    onPlay: () => void
-    onMultiplayer: () => void
-}) => {
-    const { status } = useWebSocket()
-
-    return (
-        <>
-            <h3>Main Menu ({status})</h3>
-
-            <div
-                style={{
-                    display: "flex",
-                    gap: "1em",
-                    flexDirection: "column",
-                }}
-            >
-                <button onClick={onPlay}>Play</button>
-                <button onClick={onMultiplayer}>Multiplayer</button>
-            </div>
-        </>
-    )
-}
-
-const LobbyWithConnector = withConnector(LocalLobby)
 
 function App() {
     const [state, setState] = useState<State>("main-menu")
-    const { status: socketStatus, connect, disconnect } = useWebSocket()
+    const { status: socketStatus } = useWebSocket()
+    const { connect, disconnect } = useLobby()
+
+    console.debug("App.render")
 
     useEffect(() => {
-        // Disconnect on unmount
-        return () => {
-            if (socketStatus === "connected") {
-                disconnect()
-            }
+        if (socketStatus === "disconnected") {
+            setState("main-menu")
+            disconnect()
         }
     }, [socketStatus, disconnect])
 
-    const handleJoinLobby = useCallback(() => {
+    const handleJoinLobby = useCallback(async () => {
         if (socketStatus === "disconnected") {
             connect()
         }
         setState("lobby")
     }, [socketStatus, connect])
-
-    useEffect(() => {
-        if (state === "lobby" && socketStatus === "disconnected") {
-            setState("main-menu")
-        }
-        // else if (state === "in-game" && peerStatus === "disconnected") {
-        //     setState("main-menu")
-        // }
-    }, [state, socketStatus])
 
     let content
     switch (state) {
@@ -131,13 +109,14 @@ function App() {
         case "lobby":
             // onStart // onLeave
             content = (
-                <LobbyWithConnector
-                    onStart={() => setState("in-game")}
-                    onLeave={() => {
-                        console.debug("leaving lobby")
-                        setState("main-menu")
-                    }}
-                />
+                <Lobby onLeave={() => setState("main-menu")} />
+                // <LobbyWithConnector
+                //     onEnterRoom={() => setState("lobby-room")}
+                //     onLeave={() => {
+                //         console.debug("leaving lobby")
+                //         setState("main-menu")
+                //     }}
+                // />
             )
             break
         case "in-game":
