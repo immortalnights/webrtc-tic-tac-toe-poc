@@ -12,7 +12,7 @@ export type ConnectionStatus = "disconnected" | "connecting" | "connected"
 
 export interface WebSocketContextValue {
     status: ConnectionStatus
-    connect: () => void
+    connect: () => Promise<void>
     subscribe: (name: string, callback: (data: object) => void) => void
     unsubscribe: (name: string, callback: (data: object) => void) => void
     send: (name: string, data: object | undefined) => void
@@ -26,21 +26,21 @@ export interface WebSocketContextValue {
 
 export const WebSocketContext = createContext<WebSocketContextValue>({
     status: "disconnected",
-    connect: () => {
-        throw new Error("Called abstract function")
-    },
+    connect: () =>
+        Promise.reject(new Error("Missing WebSocket Context Provider")),
     subscribe: () => {
-        throw new Error("Called abstract function")
+        throw new Error("Missing WebSocket Context Provider")
     },
     unsubscribe: () => {
-        throw new Error("Called abstract function")
+        throw new Error("Missing WebSocket Context Provider")
     },
     send: () => {
-        throw new Error("Called abstract function")
+        throw new Error("Missing WebSocket Context Provider")
     },
-    sendWithReply: () => Promise.reject(),
+    sendWithReply: () =>
+        Promise.reject(new Error("Missing WebSocket Context Provider")),
     disconnect: () => {
-        throw new Error("Called abstract function")
+        throw new Error("Missing WebSocket Context Provider")
     },
 })
 
