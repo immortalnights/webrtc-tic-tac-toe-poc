@@ -10,7 +10,7 @@ import {
 
 export type ConnectionStatus = "disconnected" | "connecting" | "connected"
 
-export interface WebSocketContextValue {
+interface WebSocketContextValue {
     status: ConnectionStatus
     connect: () => Promise<void>
     subscribe: (name: string, callback: (data: object) => void) => void
@@ -48,7 +48,7 @@ interface Subscription {
     [key: string]: ((data: object) => void)[]
 }
 
-export const WebSocketContextProvider = ({
+export const WebSocketProvider = ({
     address = "127.0.0.1:9001",
     children,
 }: {
@@ -257,6 +257,14 @@ export const WebSocketContextProvider = ({
             }
         }
     }, [status, handleOpen, handleMessage, handleClose, handleError])
+
+    useEffect(() => {
+        // Clean up on unmount
+        return () => {
+            setSubscriptions({})
+            disconnect()
+        }
+    }, [disconnect])
 
     const value = useMemo(
         () => ({

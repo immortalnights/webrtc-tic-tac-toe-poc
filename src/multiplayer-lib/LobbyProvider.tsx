@@ -1,5 +1,12 @@
 import { GameOptions, PlayerRecord, RoomRecord } from "game-signaling-server"
-import { ReactNode, createContext, useCallback, useMemo, useState } from "react"
+import {
+    ReactNode,
+    createContext,
+    useCallback,
+    useEffect,
+    useMemo,
+    useState,
+} from "react"
 import { useWebSocket } from "./useWebSocket"
 
 export type ConnectionStatus = "disconnected" | "connecting" | "connected"
@@ -28,7 +35,7 @@ export const LobbyContext = createContext<LobbyContextValue>({
     },
 })
 
-export const LobbyContextProvider = ({ children }: { children: ReactNode }) => {
+export const LobbyProvider = ({ children }: { children: ReactNode }) => {
     const {
         connect: socketConnect,
         disconnect: socketDisconnect,
@@ -104,6 +111,13 @@ export const LobbyContextProvider = ({ children }: { children: ReactNode }) => {
 
         socketDisconnect()
     }, [send, socketDisconnect])
+
+    useEffect(() => {
+        // disconnect up on unmount
+        return () => {
+            disconnect()
+        }
+    }, [disconnect])
 
     const value = useMemo(
         () => ({

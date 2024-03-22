@@ -1,71 +1,83 @@
 import {
     RTCIceCandidateLike,
     RTCSessionDescriptionLike,
+    throwError,
 } from "game-signaling-server"
-import {
-    ReactNode,
-    createContext,
-    useCallback,
-    useMemo,
-    useRef,
-    useState,
-} from "react"
+import { ReactNode, createContext, useCallback, useMemo, useState } from "react"
 import { waitFor } from "./multiplayer-lib"
 
+export type ConnectionStatus = "disconnected" | "connecting" | "connected"
+
+interface Connection {
+    pc: RTCPeerConnection
+    dc: RTCDataChannel | undefined
+    status: ConnectionStatus
+}
+
+interface ConnectionMap {
+    [peer: string]: Connection
+}
+
 export interface PeerConnectionContextValue {
-    connected: boolean
+    connections: ConnectionMap
     // Host offer
-    offer: (name?: string) => Promise<{
+    offer: (
+        peer: string,
+        name?: string,
+    ) => Promise<{
         offer: RTCSessionDescriptionInit
-        iceCandidates: RTCIceCandidate[]
+        candidates: RTCIceCandidate[]
     }>
-    // Client response
-    response: (answer: RTCSessionDescriptionLike) => Promise<void>
+    // Client reply
+    reply: (peer: string, answer: RTCSessionDescriptionLike) => Promise<void>
     // Client answer
     answer: (
         offer: RTCSessionDescriptionLike,
-        iceCandidates: RTCIceCandidateLike[],
+        candidates: RTCIceCandidateLike[],
     ) => Promise<RTCSessionDescriptionInit>
-    send: (data: object | string | ArrayBuffer) => void
-    close: () => void
+    send: (peer: string, data: object | string | ArrayBuffer) => void
+    close: (peer: string) => void
 }
 
 export const PeerConnectionContext = createContext<PeerConnectionContextValue>({
-    connected: false,
+    connections: {},
     offer: () => {
-        console.error("")
-        return Promise.reject()
+        return Promise.reject(
+            new Error("Missing Peer Connection Context Provider"),
+        )
     },
-    response: () => {
-        console.error("")
-        return Promise.reject()
+    reply: () => {
+        return Promise.reject(
+            new Error("Missing Peer Connection Context Provider"),
+        )
     },
     answer: () => {
-        console.error("")
-        return Promise.reject()
+        return Promise.reject(
+            new Error("Missing Peer Connection Context Provider"),
+        )
     },
     send: () => console.error(""),
     close: () => console.error(""),
 })
 
-const PeerConnectionContextProvider = ({
-    children,
-}: {
-    children: ReactNode
-}) => {
-    const pc = useRef(new RTCPeerConnection())
-    const dc = useRef<RTCDataChannel | null>(null)
-    const [connected, setConnected] = useState(false)
+const PeerConnectionProvider = ({ children }: { children: ReactNode }) => {
+    const [connections, setConnections] = useState<ConnectionMap>({})
 
-    const subscribeToDataChannel = (channel: RTCDataChannel) => {
+    const subscribeToDataChannel = (peer: string, channel: RTCDataChannel) => {
         channel.addEventListener("open", (ev) => {
             console.log("dc.open", ev)
-            setConnected(true)
+            setConnections((state) => ({
+                ...state,
+                [peer]: { ...state[peer], status: "connected" },
+            }))
         })
 
         channel.addEventListener("close", (ev) => {
             console.log("dc.close", ev)
-            setConnected(false)
+            setConnections((state) => ({
+                ...state,
+                [peer]: { ...state[peer], status: "disconnected" },
+            }))
         })
 
         channel.addEventListener("message", (event) => {
@@ -77,76 +89,111 @@ const PeerConnectionContextProvider = ({
         })
 
         channel.addEventListener("error", console.error)
-
-        dc.current = channel
     }
 
-    pc.current.addEventListener("datachannel", (event) => {
-        console.debug("pc.onDataChannel")
-        subscribeToDataChannel(event.channel)
-    })
-
     const offer = useCallback(
-        async (name: string = "default") => {
-            const channel = pc.current.createDataChannel(name, {
+        async (peer: string, name: string = "default") => {
+            const pc = new RTCPeerConnection()
+            const dc = pc.createDataChannel(name, {
                 protocol: "default",
             })
-            subscribeToDataChannel(channel)
+            subscribeToDataChannel(peer, dc)
 
-            const offer = await pc.current.createOffer({
+            console.debug("Creating RTC offer")
+            const offer = await pc.createOffer({
                 offerToReceiveAudio: false,
                 offerToReceiveVideo: false,
             })
-            await pc.current.setLocalDescription(offer)
+            await pc.setLocalDescription(offer)
 
-            const iceCandidates: RTCIceCandidate[] = []
-            pc.current.addEventListener("icecandidate", (event) => {
+            const candidates: RTCIceCandidate[] = []
+            pc.addEventListener("icecandidate", (event) => {
                 if (event.candidate) {
-                    iceCandidates.push(event.candidate)
+                    candidates.push(event.candidate)
                 }
             })
 
-            await waitFor(() => pc.current.iceGatheringState === "complete")
+            await waitFor(() => pc.iceGatheringState === "complete")
 
-            return { offer, iceCandidates }
+            console.debug(`Setup connection for peer ${peer}`)
+            setConnections((state) => ({
+                ...state,
+                [peer]: { ...state[peer], pc, dc, status: "connecting" },
+            }))
+
+            console.debug("Completed offer", offer, candidates)
+            return { offer, candidates }
         },
-        [pc],
+        [],
     )
 
-    const response = useCallback(async (answer: RTCSessionDescriptionLike) => {
-        console.assert(
-            "type" in answer && answer.type === "answer",
-            "Invalid RTCSessionDescription for response",
-        )
+    const reply = useCallback(
+        async (peer: string, answer: RTCSessionDescriptionLike) => {
+            console.assert(
+                answer && "type" in answer && answer.type === "answer",
+                "Invalid RTCSessionDescription for reply",
+            )
 
-        await pc.current.setRemoteDescription(
-            answer as RTCSessionDescriptionInit,
-        )
-    }, [])
+            const connection =
+                connections[peer] ??
+                throwError(`Failed to get connection for peer ${peer}`)
+
+            console.debug("Received reply", answer)
+            return connection.pc.setRemoteDescription(
+                answer as RTCSessionDescriptionInit,
+            )
+        },
+        [connections],
+    )
 
     const answer = useCallback(
         async (
             offer: RTCSessionDescriptionLike,
-            iceCandidates: RTCIceCandidateLike[],
+            candidates?: RTCIceCandidateLike[],
         ) => {
             console.assert(
-                "type" in offer && offer.type === "offer",
+                offer && "type" in offer && offer.type === "offer",
                 "Invalid RTCSessionDescription for answer",
             )
 
-            await pc.current.setRemoteDescription(
-                offer as RTCSessionDescriptionInit,
-            )
+            const pc = new RTCPeerConnection()
+            console.debug(`Setup connection for host`)
+            setConnections((state) => ({
+                ...state,
+                ["host"]: {
+                    ...state["host"],
+                    pc,
+                    dc: undefined,
+                    status: "connecting",
+                },
+            }))
 
-            const answer = await pc.current.createAnswer()
-            await pc.current.setLocalDescription(answer)
+            pc.addEventListener("datachannel", (event) => {
+                console.debug("pc.onDataChannel")
+                subscribeToDataChannel("host", event.channel)
 
-            await Promise.allSettled(
-                iceCandidates.map((candidate) =>
-                    pc.current.addIceCandidate(candidate),
-                ),
-            )
+                setConnections((state) => ({
+                    ...state,
+                    ["host"]: { ...state["host"], dc: event.channel },
+                }))
+            })
 
+            console.debug("Received offer", offer, candidates)
+            await pc.setRemoteDescription(offer as RTCSessionDescriptionInit)
+
+            console.debug("Creating RTC answer")
+            const answer = await pc.createAnswer()
+            await pc.setLocalDescription(answer)
+
+            if (candidates && candidates.length > 0) {
+                await Promise.allSettled(
+                    candidates.map((candidate) =>
+                        pc.addIceCandidate(candidate),
+                    ),
+                )
+            }
+
+            console.debug("Completed answer", answer)
             return answer
         },
         [],
@@ -154,18 +201,32 @@ const PeerConnectionContextProvider = ({
 
     const send = useCallback(() => {}, [])
 
-    const close = useCallback(() => {}, [])
+    const close = useCallback((peer: string) => {
+        setConnections((state) => {
+            let newState = state
+            if (state[peer]) {
+                state[peer].dc?.close()
+                state[peer].pc?.close()
+                state[peer].status = "disconnected"
+
+                newState = { ...state }
+                delete newState[peer]
+            }
+
+            return newState
+        })
+    }, [])
 
     const value = useMemo(
         () => ({
-            connected,
+            connections,
             offer,
-            response,
+            reply,
             answer,
             send,
             close,
         }),
-        [connected, offer, response, answer, send, close],
+        [connections, offer, reply, answer, send, close],
     )
 
     return (
@@ -175,4 +236,4 @@ const PeerConnectionContextProvider = ({
     )
 }
 
-export default PeerConnectionContextProvider
+export default PeerConnectionProvider
