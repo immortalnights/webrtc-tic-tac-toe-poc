@@ -1,5 +1,4 @@
 import { PeerConnectionStatus } from "./multiplayer-lib"
-import { useWebSocket } from "./multiplayer-lib/useWebSocket"
 
 export const LocalGame = ({ onLeave }: { onLeave: () => void }) => {
     return (

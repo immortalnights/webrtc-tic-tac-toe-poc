@@ -36,12 +36,7 @@ export const LobbyContext = createContext<LobbyContextValue>({
 })
 
 export const LobbyProvider = ({ children }: { children: ReactNode }) => {
-    const {
-        connect: socketConnect,
-        disconnect: socketDisconnect,
-        send,
-        sendWithReply,
-    } = useWebSocket()
+    const { connect: socketConnect, send, sendWithReply } = useWebSocket()
 
     const [status, setStatus] = useState<ConnectionStatus>("disconnected")
     const [player, setPlayer] = useState<PlayerRecord | null>(null)
@@ -87,7 +82,6 @@ export const LobbyProvider = ({ children }: { children: ReactNode }) => {
     const join = useCallback(
         async (room: RoomRecord) => {
             const sessionDescription = undefined
-            const iceCandidates: unknown[] = []
 
             return sendWithReply(
                 "player-join-game",

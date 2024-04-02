@@ -40,7 +40,6 @@ const Lobby = ({
 }) => {
     const { sendWithReply, subscribe, unsubscribe } = useWebSocket()
     const { host, join } = useLobby()
-    const [players, setPlayers] = useState<PlayerRecord[]>([])
     const [rooms, setRooms] = useState<RoomRecord[]>([])
 
     const handlePlayerConnected = useCallback((otherPlayer: PlayerRecord) => {
@@ -116,13 +115,19 @@ const Lobby = ({
     ])
 
     const handleHost = async () => {
-        const newRoom = await host("MyGame", {})
-        onJoin(newRoom)
+        const newRoom = await host("MyGame", {
+            maxPlayers: 4,
+        })
+        if (newRoom) {
+            onJoin(newRoom)
+        }
     }
 
     const handleJoin = async (room: RoomRecord) => {
         const newRoom = await join(room)
-        onJoin(newRoom)
+        if (newRoom) {
+            onJoin(newRoom)
+        }
     }
 
     return (

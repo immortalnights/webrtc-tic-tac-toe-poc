@@ -1,17 +1,15 @@
 import {
     RenderOptions,
-    act,
     render as reactRender,
-    renderHook,
     screen,
 } from "@testing-library/react"
-import { expect, test, vi } from "vitest"
-import { WebSocketContextProvider } from "."
+import { expect, test } from "vitest"
 import { ReactElement, useEffect } from "react"
 import { useWebSocket } from "./useWebSocket"
+import { WebSocketProvider } from "./WebSocketProvider"
 
 const render = (ui: ReactElement, options: RenderOptions = {}) => {
-    return reactRender(ui, { wrapper: WebSocketContextProvider, ...options })
+    return reactRender(ui, { wrapper: WebSocketProvider, ...options })
 }
 
 test("Disconnected", () => {
