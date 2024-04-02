@@ -11,7 +11,7 @@ import { useWebSocket } from "./useWebSocket"
 
 export type ConnectionStatus = "disconnected" | "connecting" | "connected"
 
-export interface LobbyContextValue {
+interface LobbyContextValue {
     status: ConnectionStatus
     player: PlayerRecord | null
     connect: () => Promise<object | undefined>
@@ -108,9 +108,7 @@ export const LobbyProvider = ({ children }: { children: ReactNode }) => {
 
         send("player-leave-lobby", undefined)
         setStatus("disconnected")
-
-        socketDisconnect()
-    }, [send, socketDisconnect])
+    }, [send])
 
     useEffect(() => {
         // disconnect up on unmount

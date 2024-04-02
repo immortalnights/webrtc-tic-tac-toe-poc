@@ -76,9 +76,10 @@ export const WebSocketProvider = ({
             ws.current.onmessage = null
             ws.current.onclose = null
             ws.current.onerror = null
-            setStatus("disconnected")
-            ws.current = undefined
         }
+
+        setStatus("disconnected")
+        ws.current = undefined
     }, [])
 
     const handleOpen = useCallback((event: Event) => {

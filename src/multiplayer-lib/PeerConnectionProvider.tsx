@@ -4,7 +4,7 @@ import {
     throwError,
 } from "game-signaling-server"
 import { ReactNode, createContext, useCallback, useMemo, useState } from "react"
-import { waitFor } from "./multiplayer-lib"
+import { waitFor } from "."
 
 export type ConnectionStatus = "disconnected" | "connecting" | "connected"
 
@@ -60,7 +60,11 @@ export const PeerConnectionContext = createContext<PeerConnectionContextValue>({
     close: () => console.error(""),
 })
 
-const PeerConnectionProvider = ({ children }: { children: ReactNode }) => {
+export const PeerConnectionProvider = ({
+    children,
+}: {
+    children: ReactNode
+}) => {
     const [connections, setConnections] = useState<ConnectionMap>({})
 
     const subscribeToDataChannel = (peer: string, channel: RTCDataChannel) => {
@@ -235,5 +239,3 @@ const PeerConnectionProvider = ({ children }: { children: ReactNode }) => {
         </PeerConnectionContext.Provider>
     )
 }
-
-export default PeerConnectionProvider

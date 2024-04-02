@@ -1,5 +1,5 @@
 import { useContext } from "react"
-import { PeerConnectionContext } from "./PeerConnectionContext"
+import { PeerConnectionContext } from "./PeerConnectionProvider"
 
 export const usePeerConnection = () => {
     const context = useContext(PeerConnectionContext)
