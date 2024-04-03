@@ -1,12 +1,14 @@
-import { RoomRecord } from "game-signaling-server"
+import { PlayerRecord, RoomRecord } from "game-signaling-server"
 import { createContext, ReactNode, useState, useCallback, useMemo } from "react"
 
 export type State = "main-menu" | "lobby" | "in-game"
 
 interface ManagerContextValue {
     state: State
+    player?: PlayerRecord
     room?: RoomRecord
     game?: string
+    setPlayer: React.Dispatch<React.SetStateAction<PlayerRecord | undefined>>
     joinLobby: () => void
     leaveLobby: () => void
     joinRoom: (room: RoomRecord) => void
@@ -17,8 +19,10 @@ interface ManagerContextValue {
 
 export const ManagerContext = createContext<ManagerContextValue>({
     state: "main-menu",
+    player: undefined,
     room: undefined,
     game: undefined,
+    setPlayer: () => {},
     joinLobby: () => {},
     leaveLobby: () => {},
     joinRoom: () => {},
@@ -29,6 +33,7 @@ export const ManagerContext = createContext<ManagerContextValue>({
 
 export const ManagerProvider = ({ children }: { children: ReactNode }) => {
     const [state, setState] = useState<State>("main-menu")
+    const [player, setPlayer] = useState<PlayerRecord>()
     const [room, setRoom] = useState<string>()
     const [game, setGame] = useState<string>()
 
@@ -71,8 +76,10 @@ export const ManagerProvider = ({ children }: { children: ReactNode }) => {
     const value = useMemo(
         () => ({
             state,
+            player,
             room,
             game,
+            setPlayer,
             joinLobby,
             leaveLobby,
             joinRoom,
@@ -82,8 +89,10 @@ export const ManagerProvider = ({ children }: { children: ReactNode }) => {
         }),
         [
             state,
+            player,
             room,
             game,
+            setPlayer,
             joinLobby,
             leaveLobby,
             joinRoom,

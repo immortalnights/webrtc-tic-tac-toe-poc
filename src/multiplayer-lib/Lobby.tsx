@@ -151,7 +151,7 @@ const Lobby = ({
 
 const LobbyCore = () => {
     const { room, joinRoom, leaveLobby, leaveRoom } = useManager()
-    const { player: localPlayer } = useLobby()
+    const { player: localPlayer } = useManager()
 
     console.debug("LobbyCore.render", room)
 

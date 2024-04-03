@@ -8,12 +8,12 @@ import {
     useState,
 } from "react"
 import { useWebSocket } from "./useWebSocket"
+import { useManager } from "."
 
 export type ConnectionStatus = "disconnected" | "connecting" | "connected"
 
 interface LobbyContextValue {
     status: ConnectionStatus
-    player: PlayerRecord | null
     connect: () => Promise<object | undefined>
     host: (name: string, options: GameOptions) => Promise<object | undefined>
     join: (room: RoomRecord) => Promise<object | undefined>
@@ -23,7 +23,6 @@ interface LobbyContextValue {
 
 export const LobbyContext = createContext<LobbyContextValue>({
     status: "disconnected",
-    player: null,
     connect: () => Promise.reject(new Error("Missing Lobby Context Provider")),
     host: () => Promise.reject(new Error("Missing Lobby Context Provider")),
     join: () => Promise.reject(new Error("Missing Lobby Context Provider")),
@@ -36,10 +35,10 @@ export const LobbyContext = createContext<LobbyContextValue>({
 })
 
 export const LobbyProvider = ({ children }: { children: ReactNode }) => {
+    const { setPlayer } = useManager()
     const { connect: socketConnect, send, sendWithReply } = useWebSocket()
 
     const [status, setStatus] = useState<ConnectionStatus>("disconnected")
-    const [player, setPlayer] = useState<PlayerRecord | null>(null)
 
     const connect = useCallback(async () => {
         console.debug("Join lobby...")
@@ -58,14 +57,14 @@ export const LobbyProvider = ({ children }: { children: ReactNode }) => {
         setStatus("connected")
 
         return reply
-    }, [sendWithReply, socketConnect])
+    }, [sendWithReply, socketConnect, setPlayer])
 
     const host = useCallback(
         async (name: string, options: GameOptions) => {
             const sessionDescription = undefined
             const iceCandidates: unknown[] = []
 
-            return sendWithReply(
+            const reply = sendWithReply(
                 "player-host-game",
                 {
                     name,
@@ -75,15 +74,24 @@ export const LobbyProvider = ({ children }: { children: ReactNode }) => {
                 },
                 "player-host-game-reply",
             )
+
+            reply.then(() => {
+                // This could be more robust or could be handled based on the (future) new game notification
+                setPlayer((state) =>
+                    state ? { ...state, host: true } : undefined,
+                )
+            })
+
+            return reply
         },
-        [sendWithReply],
+        [sendWithReply, setPlayer],
     )
 
     const join = useCallback(
         async (room: RoomRecord) => {
             const sessionDescription = undefined
 
-            return sendWithReply(
+            const reply = sendWithReply(
                 "player-join-game",
                 {
                     id: room.id,
@@ -91,8 +99,17 @@ export const LobbyProvider = ({ children }: { children: ReactNode }) => {
                 },
                 "player-join-game-reply",
             )
+
+            reply.then(() => {
+                // This could be more robust or could be handled based on the (future) join game notification
+                setPlayer((state) =>
+                    state ? { ...state, host: false } : undefined,
+                )
+            })
+
+            return reply
         },
-        [sendWithReply],
+        [sendWithReply, setPlayer],
     )
 
     const leave = useCallback(() => {}, [])
@@ -114,14 +131,13 @@ export const LobbyProvider = ({ children }: { children: ReactNode }) => {
     const value = useMemo(
         () => ({
             status,
-            player,
             connect,
             host,
             join,
             leave,
             disconnect,
         }),
-        [status, player, connect, host, join, leave, disconnect],
+        [status, connect, host, join, leave, disconnect],
     )
 
     return (

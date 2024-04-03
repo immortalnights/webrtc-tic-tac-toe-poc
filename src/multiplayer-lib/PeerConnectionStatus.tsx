@@ -1,28 +1,35 @@
-import { PlayerRecord } from "game-signaling-server"
 import { usePeerConnection } from "./usePeerConnection"
+import { useManager } from "."
 
 export const PeerConnectionStatus = ({
-    localPlayer,
     remotePlayerId,
 }: {
-    localPlayer: PlayerRecord
-    remotePlayerId: string
+    remotePlayerId?: string
 }) => {
+    const { player: localPlayer } = useManager()
     const { connections } = usePeerConnection()
 
+    let connection
+    if (localPlayer && localPlayer.id !== remotePlayerId) {
+        if (localPlayer.host) {
+            if (remotePlayerId) {
+                connection = connections[remotePlayerId]
+            } else {
+                const keys = Object.keys(connections)
+                if (keys.length === 1) {
+                    connection = connections[keys[0]]
+                }
+            }
+        } else {
+            connection = connections["host"]
+        }
+    }
+
     let content
-    if (localPlayer.id === remotePlayerId) {
+    if (!connection) {
         content = "-"
     } else {
-        const connection = localPlayer.host
-            ? connections[remotePlayerId]
-            : connections["host"]
-
-        if (!connection) {
-            content = "Not Found"
-        } else {
-            content = `Status: ${connection.status}`
-        }
+        content = `Status: ${connection.status}`
     }
 
     return content

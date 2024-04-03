@@ -202,10 +202,7 @@ export const LobbyRoom = ({
                         <div>{player.ready ? "Ready" : "Not Ready"}</div>
                         <div style={{ flexGrow: 1 }}>{player.name}</div>
                         <div>
-                            <PeerConnectionStatus
-                                localPlayer={localPlayer}
-                                remotePlayerId={player.id}
-                            />
+                            <PeerConnectionStatus remotePlayerId={player.id} />
                         </div>
                         <div>
                             {localPlayer?.id === player.id ? (
