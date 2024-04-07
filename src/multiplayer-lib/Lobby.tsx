@@ -31,19 +31,12 @@ const LobbyRoomItem = ({
     )
 }
 
-const Lobby = ({
-    onJoin,
-    onLeave,
-}: {
-    onJoin: (room: RoomRecord) => void
-    onLeave: () => void
-}) => {
+const useSyncLobby = () => {
     const {
         sendWithReply,
         subscribe: socketSubscribe,
         unsubscribe: socketUnsubscribe,
     } = useWebSocket()
-    const { host, join } = useLobby()
     const [rooms, setRooms] = useState<RoomRecord[]>([])
 
     const subscribe = useCallback(() => {
@@ -108,7 +101,18 @@ const Lobby = ({
 
     const getSnapshot = useCallback(() => rooms, [rooms])
 
-    const syncRooms = useSyncExternalStore(subscribe, getSnapshot)
+    return useSyncExternalStore(subscribe, getSnapshot)
+}
+
+const Lobby = ({
+    onJoin,
+    onLeave,
+}: {
+    onJoin: (room: RoomRecord) => void
+    onLeave: () => void
+}) => {
+    const { host, join } = useLobby()
+    const rooms = useSyncLobby()
 
     const handleHost = async () => {
         const newRoom = await host("MyGame", {
@@ -129,7 +133,7 @@ const Lobby = ({
     return (
         <div>
             <div>
-                {syncRooms.map((room) => (
+                {rooms.map((room) => (
                     <LobbyRoomItem
                         key={room.id}
                         record={room}
