@@ -71,6 +71,7 @@ export const LobbyProvider = ({ children }: { children: ReactNode }) => {
                     options,
                     sessionDescription,
                     iceCandidates,
+                    autoReady: true,
                 },
                 "player-host-game-reply",
             )
@@ -96,6 +97,7 @@ export const LobbyProvider = ({ children }: { children: ReactNode }) => {
                 {
                     id: room.id,
                     sessionDescription,
+                    autoReady: true,
                 },
                 "player-join-game-reply",
             )

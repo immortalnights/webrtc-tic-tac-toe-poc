@@ -1,5 +1,5 @@
 import { RoomRecord, RoomState, PlayerRecord } from "game-signaling-server"
-import { useState, useCallback, useEffect } from "react"
+import { useState, useCallback, useEffect, useSyncExternalStore } from "react"
 import { useLobby } from "./useLobby"
 import { useManager } from "./useManager"
 import { useWebSocket } from "./useWebSocket"
@@ -38,38 +38,46 @@ const Lobby = ({
     onJoin: (room: RoomRecord) => void
     onLeave: () => void
 }) => {
-    const { sendWithReply, subscribe, unsubscribe } = useWebSocket()
+    const {
+        sendWithReply,
+        subscribe: socketSubscribe,
+        unsubscribe: socketUnsubscribe,
+    } = useWebSocket()
     const { host, join } = useLobby()
     const [rooms, setRooms] = useState<RoomRecord[]>([])
 
-    const handlePlayerConnected = useCallback((otherPlayer: PlayerRecord) => {
-        console.debug(`Player ${otherPlayer.name} connected to lobby`)
-    }, [])
+    const subscribe = useCallback(() => {
+        const handlePlayerConnected = (otherPlayer: PlayerRecord) => {
+            console.debug(`Player ${otherPlayer.name} connected to lobby`)
+        }
 
-    const handlePlayerDisconnected = useCallback(
-        (otherPlayer: PlayerRecord) => {
+        const handlePlayerDisconnected = (otherPlayer: PlayerRecord) => {
             console.debug(`Player ${otherPlayer.name} disconnected from lobby`)
-        },
-        [],
-    )
+        }
 
-    const handleRoomCreated = useCallback((room: RoomRecord) => {
-        console.debug(`Room created ${room.id}`)
-        setRooms((state) => {
-            let newState = state
-            if (!state.find((r) => r.id === room.id)) {
-                newState = [...state, room]
-            }
-            return newState
-        })
-    }, [])
+        const handleRoomCreated = (room: RoomRecord) => {
+            console.debug(`Room created ${room.id}`)
+            setRooms((state) => {
+                let newState = state
+                if (!state.find((r) => r.id === room.id)) {
+                    newState = [...state, room]
+                }
+                return newState
+            })
+        }
 
-    const handleRoomDeleted = useCallback((room: RoomRecord) => {
-        console.debug(`Room deleted ${room.id}`)
-        setRooms((state) => state.filter((item) => item.id !== room.id))
-    }, [])
+        const handleRoomDeleted = (room: RoomRecord) => {
+            console.debug(`Room deleted ${room.id}`)
+            setRooms((state) => state.filter((item) => item.id !== room.id))
+        }
 
-    useEffect(() => {
+        const subscriptions = {
+            "lobby-player-connected": handlePlayerConnected,
+            "lobby-player-disconnected": handlePlayerDisconnected,
+            "lobby-room-created": handleRoomCreated,
+            "lobby-room-deleted": handleRoomDeleted,
+        }
+
         sendWithReply(
             "player-list-players",
             { name },
@@ -86,33 +94,21 @@ const Lobby = ({
             console.log("Got games: ", data.games)
             setRooms(data.games as unknown as RoomRecord[])
         })
-    }, [sendWithReply])
-
-    useEffect(() => {
-        const subscriptions = {
-            "lobby-player-connected": handlePlayerConnected,
-            "lobby-player-disconnected": handlePlayerDisconnected,
-            "lobby-room-created": handleRoomCreated,
-            "lobby-room-deleted": handleRoomDeleted,
-        }
 
         Object.entries(subscriptions).forEach(([name, callback]) => {
-            subscribe(name, callback)
+            socketSubscribe(name, callback)
         })
 
         return () => {
             Object.entries(subscriptions).forEach(([name, callback]) => {
-                unsubscribe(name, callback)
+                socketUnsubscribe(name, callback)
             })
         }
-    }, [
-        subscribe,
-        unsubscribe,
-        handlePlayerConnected,
-        handlePlayerDisconnected,
-        handleRoomCreated,
-        handleRoomDeleted,
-    ])
+    }, [sendWithReply, socketSubscribe, socketUnsubscribe])
+
+    const getSnapshot = useCallback(() => rooms, [rooms])
+
+    const syncRooms = useSyncExternalStore(subscribe, getSnapshot)
 
     const handleHost = async () => {
         const newRoom = await host("MyGame", {
@@ -133,7 +129,7 @@ const Lobby = ({
     return (
         <div>
             <div>
-                {rooms.map((room) => (
+                {syncRooms.map((room) => (
                     <LobbyRoomItem
                         key={room.id}
                         record={room}
