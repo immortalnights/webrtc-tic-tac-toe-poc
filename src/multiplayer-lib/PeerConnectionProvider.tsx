@@ -18,6 +18,11 @@ interface ConnectionMap {
     [peer: string]: Connection
 }
 
+export type OnMessageHandler = (
+    peer: string,
+    data: { name: string; body: object },
+) => void
+
 export interface PeerConnectionContextValue {
     connections: ConnectionMap
     // Host offer
@@ -35,7 +40,8 @@ export interface PeerConnectionContextValue {
         offer: RTCSessionDescriptionLike,
         candidates: RTCIceCandidateLike[],
     ) => Promise<RTCSessionDescriptionInit>
-    send: (peer: string, data: object | string | ArrayBuffer) => void
+    send: (name: string, body: object, target?: string) => void
+    subscribe: (cb: OnMessageHandler) => void
     close: (peer: string) => void
 }
 
@@ -57,6 +63,7 @@ export const PeerConnectionContext = createContext<PeerConnectionContextValue>({
         )
     },
     send: () => console.error(""),
+    subscribe: () => console.error(""),
     close: () => console.error(""),
 })
 
@@ -67,33 +74,38 @@ export const PeerConnectionProvider = ({
 }) => {
     const [connections, setConnections] = useState<ConnectionMap>({})
 
-    const subscribeToDataChannel = (peer: string, channel: RTCDataChannel) => {
-        channel.addEventListener("open", (ev) => {
-            console.log("dc.open", ev)
-            setConnections((state) => ({
-                ...state,
-                [peer]: { ...state[peer], status: "connected" },
-            }))
-        })
+    const subscribeToDataChannel = useCallback(
+        (peer: string, channel: RTCDataChannel) => {
+            channel.addEventListener(
+                "open",
+                (ev) => {
+                    console.debug("dc.open", ev)
+                    setConnections((state) => ({
+                        ...state,
+                        [peer]: { ...state[peer], status: "connected" },
+                    }))
+                },
+                { once: true },
+            )
 
-        channel.addEventListener("close", (ev) => {
-            console.log("dc.close", ev)
-            setConnections((state) => ({
-                ...state,
-                [peer]: { ...state[peer], status: "disconnected" },
-            }))
-        })
+            channel.addEventListener(
+                "close",
+                (ev) => {
+                    console.debug("dc.close", ev)
+                    setConnections((state) => ({
+                        ...state,
+                        [peer]: { ...state[peer], status: "disconnected" },
+                    }))
 
-        channel.addEventListener("message", (event) => {
-            console.debug("Received peer message", event)
-            // const json = JSON.parse(data.toString())
-            // if ("name" in json) {
-            //     this.onMessage?.(json as PeerMessage)
-            // }
-        })
+                    channel.removeEventListener("error", console.error)
+                },
+                { once: true },
+            )
 
-        channel.addEventListener("error", console.error)
-    }
+            channel.addEventListener("error", console.error)
+        },
+        [],
+    )
 
     const offer = useCallback(
         async (peer: string, name: string = "default") => {
@@ -111,13 +123,15 @@ export const PeerConnectionProvider = ({
             await pc.setLocalDescription(offer)
 
             const candidates: RTCIceCandidate[] = []
-            pc.addEventListener("icecandidate", (event) => {
+            const onIceCandidate = (event: RTCPeerConnectionIceEvent) => {
                 if (event.candidate) {
                     candidates.push(event.candidate)
                 }
-            })
+            }
 
+            pc.addEventListener("icecandidate", onIceCandidate)
             await waitFor(() => pc.iceGatheringState === "complete")
+            pc.removeEventListener("icecandidate", onIceCandidate)
 
             console.debug(`Setup connection for peer ${peer}`)
             setConnections((state) => ({
@@ -128,7 +142,7 @@ export const PeerConnectionProvider = ({
             console.debug("Completed offer", offer, candidates)
             return { offer, candidates }
         },
-        [],
+        [subscribeToDataChannel],
     )
 
     const reply = useCallback(
@@ -172,7 +186,7 @@ export const PeerConnectionProvider = ({
                 },
             }))
 
-            pc.addEventListener("datachannel", (event) => {
+            const onDataChannel = (event: RTCDataChannelEvent) => {
                 console.debug("pc.onDataChannel")
                 subscribeToDataChannel("host", event.channel)
 
@@ -180,7 +194,9 @@ export const PeerConnectionProvider = ({
                     ...state,
                     ["host"]: { ...state["host"], dc: event.channel },
                 }))
-            })
+            }
+
+            pc.addEventListener("datachannel", onDataChannel, { once: true })
 
             console.debug("Received offer", offer, candidates)
             await pc.setRemoteDescription(offer as RTCSessionDescriptionInit)
@@ -200,15 +216,60 @@ export const PeerConnectionProvider = ({
             console.debug("Completed answer", answer)
             return answer
         },
-        [],
+        [subscribeToDataChannel],
     )
 
-    const send = useCallback(() => {}, [])
+    const send = useCallback(
+        (name: string, body: object, target?: string) => {
+            const data = JSON.stringify({
+                name,
+                body,
+            })
+            Object.entries(connections).forEach(([peer, connection]) => {
+                if (!target || target === peer) {
+                    connection.dc?.send(data)
+                }
+            })
+        },
+        [connections],
+    )
+
+    const subscribe = useCallback(
+        (callback: OnMessageHandler) => {
+            Object.entries(connections).forEach(([peer, connection]) => {
+                if (!connection.dc) {
+                    throw new Error(
+                        "Cannot subscribe before the channel has connected",
+                    )
+                }
+
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const onMessage = (event: MessageEvent<any>) => {
+                    console.debug("Received peer message", event.data)
+                    const json = JSON.parse(event.data.toString())
+                    if (callback && "name" in json) {
+                        callback(peer, json)
+                    }
+                }
+
+                connection.dc.addEventListener("message", onMessage)
+                connection.dc.addEventListener(
+                    "close",
+                    () => {
+                        connection.dc?.removeEventListener("message", onMessage)
+                    },
+                    { once: true },
+                )
+            })
+        },
+        [connections],
+    )
 
     const close = useCallback((peer: string) => {
         setConnections((state) => {
             let newState = state
             if (state[peer]) {
+                state[peer].dc?.removeEventListener
                 state[peer].dc?.close()
                 state[peer].pc?.close()
                 state[peer].status = "disconnected"
@@ -228,9 +289,10 @@ export const PeerConnectionProvider = ({
             reply,
             answer,
             send,
+            subscribe,
             close,
         }),
-        [connections, offer, reply, answer, send, close],
+        [connections, offer, reply, answer, send, subscribe, close],
     )
 
     return (
