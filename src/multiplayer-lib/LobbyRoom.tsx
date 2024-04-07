@@ -4,20 +4,18 @@ import {
     RTCSessionDescriptionLike,
     RoomRecord,
 } from "game-signaling-server"
-import { useState, useCallback, useEffect } from "react"
+import { useState, useCallback, useSyncExternalStore } from "react"
 import { usePeerConnection } from "./usePeerConnection"
 import { PeerConnectionStatus } from "./PeerConnectionStatus"
 import { useWebSocket } from "./useWebSocket"
 import { useManager } from "."
 
-export const LobbyRoom = ({
+const useSyncRoom = ({
     localPlayerId,
-    room: initialRoom,
-    onLeave,
+    initialRoom,
 }: {
     localPlayerId: string
-    room: RoomRecord
-    onLeave: () => void
+    initialRoom: RoomRecord
 }) => {
     const { leaveRoom, joinGame } = useManager()
     const { subscribe, unsubscribe, send } = useWebSocket()
@@ -26,8 +24,8 @@ export const LobbyRoom = ({
 
     const localPlayer = room.players.find((item) => item.id === localPlayerId)
 
-    const handlePlayerConnected = useCallback(
-        async (otherPlayer: PlayerRecord) => {
+    const subscribeToSocket = useCallback(() => {
+        const handlePlayerConnected = async (otherPlayer: PlayerRecord) => {
             console.debug(`Player joined room ${otherPlayer.id}`)
             setRoom((state) => ({
                 ...state,
@@ -44,12 +42,11 @@ export const LobbyRoom = ({
                     candidates,
                 })
             }
-        },
-        [localPlayer?.host, offer, send],
-    )
+        }
 
-    const handlePlayerDisconnected = useCallback(
-        (otherPlayer: Pick<PlayerRecord, "id" | "name">) => {
+        const handlePlayerDisconnected = (
+            otherPlayer: Pick<PlayerRecord, "id" | "name">,
+        ) => {
             console.debug(`Player disconnected ${otherPlayer.id}`)
             close(otherPlayer.id)
             setRoom((state) => ({
@@ -58,12 +55,11 @@ export const LobbyRoom = ({
                     (item) => item.id !== otherPlayer.id,
                 ),
             }))
-        },
-        [close],
-    )
+        }
 
-    const handlePlayerReadyChange = useCallback(
-        (otherPlayer: Pick<PlayerRecord, "id" | "ready">) => {
+        const handlePlayerReadyChange = (
+            otherPlayer: Pick<PlayerRecord, "id" | "ready">,
+        ) => {
             setRoom((state) => {
                 const playerRecord = state.players.find(
                     (item) => item.id === otherPlayer.id,
@@ -82,23 +78,13 @@ export const LobbyRoom = ({
                 }
                 return newState
             })
-        },
-        [],
-    )
+        }
 
-    const handleStartGame = useCallback(
-        (_room: string, game: string) => {
-            joinGame(game)
-        },
-        [joinGame],
-    )
+        const handleStartGame = (_room: string, game: string) => joinGame(game)
 
-    const handleRoomClosed = useCallback(() => {
-        leaveRoom()
-    }, [leaveRoom])
+        const handleRoomClosed = () => leaveRoom()
 
-    const handleConnectToHost = useCallback(
-        async ({
+        const handleConnectToHost = async ({
             id,
             sessionDescription,
             candidates,
@@ -115,12 +101,9 @@ export const LobbyRoom = ({
             send("player-connect-to-host", {
                 answer: answerSessionDescription,
             })
-        },
-        [answer, send],
-    )
+        }
 
-    const handleConnectToPeerReply = useCallback(
-        async ({
+        const handleConnectToPeerReply = async ({
             id,
             sessionDescription,
         }: {
@@ -129,11 +112,8 @@ export const LobbyRoom = ({
         }) => {
             console.debug(`Connect to peer reply (${id})`)
             await reply(id, sessionDescription)
-        },
-        [reply],
-    )
+        }
 
-    useEffect(() => {
         console.debug("!Subscribe")
         const subscriptions = {
             "room-player-connected": handlePlayerConnected,
@@ -157,16 +137,37 @@ export const LobbyRoom = ({
             })
         }
     }, [
+        answer,
+        close,
+        joinGame,
+        leaveRoom,
+        localPlayer?.host,
+        offer,
+        reply,
+        send,
         subscribe,
         unsubscribe,
-        handlePlayerConnected,
-        handlePlayerDisconnected,
-        handlePlayerReadyChange,
-        handleStartGame,
-        handleRoomClosed,
-        handleConnectToHost,
-        handleConnectToPeerReply,
     ])
+
+    const getSnapshot = useCallback(() => room, [room])
+
+    return useSyncExternalStore(subscribeToSocket, getSnapshot)
+}
+
+export const LobbyRoom = ({
+    localPlayerId,
+    room: initialRoom,
+    onLeave,
+}: {
+    localPlayerId: string
+    room: RoomRecord
+    onLeave: () => void
+}) => {
+    const { send } = useWebSocket()
+    const room = useSyncRoom({ localPlayerId, initialRoom })
+
+    const localPlayer = room.players.find((item) => item.id === localPlayerId)
+    const canStartGame = localPlayer?.host && room.players.every((p) => p.ready)
 
     const handleToggleReady = useCallback(() => {
         send("player-change-ready-state", {
@@ -183,8 +184,6 @@ export const LobbyRoom = ({
             })
         }
     }, [send, localPlayer])
-
-    const canStartGame = localPlayer?.host && room.players.every((p) => p.ready)
 
     return (
         <div>
@@ -214,6 +213,7 @@ export const LobbyRoom = ({
                                             ? "Set ready"
                                             : "Set not ready"
                                     }
+                                    checked={player.ready}
                                     onChange={handleToggleReady}
                                 />
                             ) : (
