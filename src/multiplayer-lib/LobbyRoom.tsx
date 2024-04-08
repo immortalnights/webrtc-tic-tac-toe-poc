@@ -3,6 +3,7 @@ import {
     RTCIceCandidateLike,
     RTCSessionDescriptionLike,
     RoomRecord,
+    throwError,
 } from "game-signaling-server"
 import { useState, useCallback, useSyncExternalStore } from "react"
 import {
@@ -116,7 +117,6 @@ const useSyncRoom = ({
             await reply(id, sessionDescription)
         }
 
-        console.debug("!Subscribe")
         const subscriptions = {
             "room-player-connected": handlePlayerConnected,
             "room-player-disconnected": handlePlayerDisconnected,
@@ -132,7 +132,7 @@ const useSyncRoom = ({
         })
 
         return () => {
-            console.debug("!Unsubscribe")
+            send("player-leave-room", undefined)
 
             Object.entries(subscriptions).forEach(([name, callback]) => {
                 unsubscribe(name, callback)
@@ -156,27 +156,83 @@ const useSyncRoom = ({
     return useSyncExternalStore(subscribeToSocket, getSnapshot)
 }
 
-export const LobbyRoom = ({
-    localPlayerId,
-    room: initialRoom,
-    onLeave,
-}: {
-    localPlayerId: string
-    room: RoomRecord
-    onLeave: () => void
-}) => {
+const ReadyStateToggle = ({ player }: { player: PlayerRecord }) => {
     const { send } = useWebSocket()
-    const room = useSyncRoom({ localPlayerId, initialRoom })
-
-    const localPlayer = room.players.find((item) => item.id === localPlayerId)
-    const canStartGame = localPlayer?.host && room.players.every((p) => p.ready)
 
     const handleToggleReady = useCallback(() => {
         send("player-change-ready-state", {
-            id: localPlayer?.id,
-            ready: !localPlayer?.ready,
+            id: player?.id,
+            ready: !player?.ready,
         })
-    }, [send, localPlayer])
+    }, [send, player])
+
+    return (
+        <input
+            type="checkbox"
+            title="Toggle ready"
+            aria-label={player.ready ? "Set ready" : "Set not ready"}
+            checked={player.ready}
+            onChange={handleToggleReady}
+        />
+    )
+}
+
+const ReadyState = ({ player }: { player: PlayerRecord }) => {
+    return player.ready ? "Ready" : "Not Ready"
+}
+
+const PlayerItem = ({
+    localPlayer,
+    player,
+}: {
+    localPlayer: PlayerRecord
+    player: PlayerRecord
+}) => {
+    return (
+        <div
+            key={player.id}
+            style={{
+                display: "flex",
+                flexDirection: "row",
+                alignItems: "center",
+            }}
+        >
+            <div style={{ flexGrow: 1, textAlign: "left" }}>
+                {localPlayer?.id === player.id ? "*" : " "}
+                {player.name}
+            </div>
+            <div style={{ paddingRight: 10 }}>
+                <PeerConnectionStatus remotePlayerId={player.id} />
+            </div>
+            <div>
+                {localPlayer?.id === player.id ? (
+                    <ReadyStateToggle player={player} />
+                ) : (
+                    <ReadyState player={player} />
+                )}
+            </div>
+        </div>
+    )
+}
+
+export const LobbyRoom = ({
+    localPlayerId,
+    room: initialRoom,
+}: {
+    localPlayerId: string
+    room: RoomRecord
+}) => {
+    const { send } = useWebSocket()
+    const { leaveRoom } = useManager()
+    const room = useSyncRoom({ localPlayerId, initialRoom })
+
+    const localPlayer =
+        room.players.find((item) => item.id === localPlayerId) ??
+        throwError("Failed to find local player in Lobby Room")
+    const canStartGame =
+        localPlayer?.host &&
+        room.players.length >= (room.options.minPlayers ?? 2) &&
+        room.players.every((p) => p.ready)
 
     const handleHostStartGame = useCallback(() => {
         if (localPlayer?.host) {
@@ -190,43 +246,17 @@ export const LobbyRoom = ({
     return (
         <div>
             <div>Room {room.name}</div>
-            <div>
+            <div style={{ minWidth: 400 }}>
                 {room.players.map((player) => (
-                    <div
+                    <PlayerItem
                         key={player.id}
-                        style={{
-                            display: "flex",
-                            flexDirection: "row",
-                            alignItems: "center",
-                        }}
-                    >
-                        <div>{player.ready ? "Ready" : "Not Ready"}</div>
-                        <div style={{ flexGrow: 1 }}>{player.name}</div>
-                        <div>
-                            <PeerConnectionStatus remotePlayerId={player.id} />
-                        </div>
-                        <div>
-                            {localPlayer?.id === player.id ? (
-                                <input
-                                    type="checkbox"
-                                    title="Toggle ready"
-                                    aria-label={
-                                        player.ready
-                                            ? "Set ready"
-                                            : "Set not ready"
-                                    }
-                                    checked={player.ready}
-                                    onChange={handleToggleReady}
-                                />
-                            ) : (
-                                ""
-                            )}
-                        </div>
-                    </div>
+                        localPlayer={localPlayer}
+                        player={player}
+                    />
                 ))}
             </div>
             <div>
-                <button onClick={onLeave}>Leave</button>
+                <button onClick={leaveRoom}>Leave</button>
                 {localPlayer?.host && (
                     <button
                         disabled={!canStartGame}

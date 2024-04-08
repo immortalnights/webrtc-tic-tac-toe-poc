@@ -6,10 +6,10 @@ import { useWebSocket } from "./useWebSocket"
 import { LobbyRoom } from "./LobbyRoom"
 
 const LobbyRoomItem = ({
-    record,
+    room,
     onJoin,
 }: {
-    record: RoomRecord
+    room: RoomRecord
     onJoin: (room: RoomRecord) => void
 }) => {
     return (
@@ -18,14 +18,21 @@ const LobbyRoomItem = ({
                 display: "flex",
                 flexDirection: "row",
                 alignItems: "center",
+                gap: 12,
             }}
         >
-            <div>{record.name}</div>
-            <div>{record.players.length}</div>
+            <div style={{ flexGrow: 1, textAlign: "left" }}>{room.name}</div>
+            <div>Players: {room.players.length}</div>
             <div>
-                {record.state === RoomState.Open ? (
-                    <button onClick={() => onJoin(record)}>Join</button>
-                ) : null}
+                <button
+                    onClick={() => onJoin(room)}
+                    disabled={
+                        room.state !== RoomState.Open &&
+                        room.players.length >= room.options.maxPlayers
+                    }
+                >
+                    Join
+                </button>
             </div>
         </div>
     )
@@ -104,13 +111,8 @@ const useSyncLobby = () => {
     return useSyncExternalStore(subscribe, getSnapshot)
 }
 
-const Lobby = ({
-    onJoin,
-    onLeave,
-}: {
-    onJoin: (room: RoomRecord) => void
-    onLeave: () => void
-}) => {
+const Lobby = () => {
+    const { joinRoom, leaveLobby } = useManager()
     const { host, join } = useLobby()
     const rooms = useSyncLobby()
 
@@ -119,84 +121,71 @@ const Lobby = ({
             maxPlayers: 4,
         })
         if (newRoom) {
-            onJoin(newRoom)
+            joinRoom(newRoom)
         }
     }
 
     const handleJoin = async (room: RoomRecord) => {
         const newRoom = await join(room)
         if (newRoom) {
-            onJoin(newRoom)
+            joinRoom(newRoom)
         }
     }
 
     return (
         <div>
-            <div>
+            <div
+                style={{
+                    minWidth: 400,
+                    minHeight: 200,
+                    borderWidth: 1,
+                    borderStyle: "solid none",
+                    borderColor: "lightgray",
+                }}
+            >
                 {rooms.map((room) => (
                     <LobbyRoomItem
                         key={room.id}
-                        record={room}
+                        room={room}
                         onJoin={handleJoin}
                     />
                 ))}
+
+                {rooms.length === 0 && <div>No games</div>}
             </div>
             <div>
                 <button onClick={handleHost}>Host</button>
-                <button onClick={onLeave}>Leave</button>
+                <button onClick={leaveLobby}>Leave</button>
             </div>
         </div>
     )
 }
 
-const LobbyCore = () => {
-    const { room, joinRoom, leaveLobby, leaveRoom } = useManager()
-    const { player: localPlayer } = useManager()
-
-    console.debug("LobbyCore.render", room)
-
-    const handleJoin = (room: RoomRecord) => {
-        joinRoom(room)
-    }
-
-    const handleLeaveRoom = () => {
-        leaveRoom()
-    }
-
-    const handleLeaveLobby = () => {
-        leaveLobby()
-    }
-
-    let content
-    if (room) {
-        content = (
-            <LobbyRoom
-                localPlayerId={localPlayer!.id}
-                room={room}
-                onLeave={handleLeaveRoom}
-            />
-        )
-    } else {
-        content = <Lobby onJoin={handleJoin} onLeave={handleLeaveLobby} />
-    }
-
-    return content
-}
-
 export const LobbyRoot = () => {
+    const { player: localPlayer, room, leaveLobby } = useManager()
     const { status, connect, disconnect } = useLobby()
-
-    console.debug("Lobby.render", status)
+    console.debug("Lobby.render", status, room)
 
     useEffect(() => {
         if (status === "disconnected") {
             connect()
         }
-    }, [status, connect, disconnect])
+
+        // Automatically leaving the Lobby causes a lot of issues...
+        // return () => {
+        //     if (status === "connected") {
+        //         leaveLobby()
+        //     }
+        // }
+    }, [status, connect, disconnect, leaveLobby])
 
     let content
     if (status === "connected") {
-        content = <LobbyCore />
+        if (room) {
+            content = <LobbyRoom localPlayerId={localPlayer!.id} room={room} />
+        } else {
+            content = <Lobby />
+        }
     } else if (status === "connecting") {
         content = <div>Connecting</div>
     } else if (status === "disconnected") {

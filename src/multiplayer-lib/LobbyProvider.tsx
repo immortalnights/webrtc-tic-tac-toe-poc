@@ -114,14 +114,17 @@ export const LobbyProvider = ({ children }: { children: ReactNode }) => {
         [sendWithReply, setPlayer],
     )
 
-    const leave = useCallback(() => {}, [])
+    const leave = useCallback(() => {
+        send("player-leave-room", undefined)
+    }, [send])
 
     const disconnect = useCallback(() => {
-        console.debug("Disconnect from lobby")
-
-        send("player-leave-lobby", undefined)
-        setStatus("disconnected")
-    }, [send])
+        if (status === "connected") {
+            console.debug("Disconnect from lobby")
+            send("player-leave-lobby", undefined)
+            setStatus("disconnected")
+        }
+    }, [status, send])
 
     useEffect(() => {
         // disconnect up on unmount
