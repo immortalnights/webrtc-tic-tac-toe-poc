@@ -41,7 +41,7 @@ export const GameContext = createContext<GameContextValue>({
 
 export const GameProvider = ({ children }: { children: ReactNode }) => {
     const { player } = useManager()
-    const { connections, send, subscribe } = usePeerConnection()
+    const { connections, send, subscribe, unsubscribe } = usePeerConnection()
     const [state, setState] = useState<GameState>("setup")
     const [name, setName] = useState("Unnamed")
     const [players, setPlayers] = useState<GamePlayer[]>(
@@ -97,7 +97,10 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
     )
 
     useEffect(() => {
-        subscribe((peer, data) => {
+        const onDataChannelMessage: DataChannelMessageHandler = (
+            peer,
+            data,
+        ) => {
             if (player?.host) {
                 if (data.name === "player-state-update") {
                     const newState = data.body.state as PlayerGameState
@@ -113,8 +116,14 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
                     setState(data.body.state as GameState)
                 }
             }
-        })
-    }, [player, subscribe, updatePlayerState, send])
+        }
+
+        subscribe(onDataChannelMessage)
+
+        return () => {
+            unsubscribe(onDataChannelMessage)
+        }
+    }, [player, subscribe, unsubscribe, updatePlayerState, send])
 
     useEffect(() => {
         if (player?.host) {

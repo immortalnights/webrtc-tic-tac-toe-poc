@@ -6,7 +6,6 @@ import {
     useMemo,
     useState,
 } from "react"
-import { usePeerConnection } from "./multiplayer-lib/usePeerConnection"
 import { useManager } from "./multiplayer-lib"
 import { useGame } from "./multiplayer-lib/useGame"
 import {
@@ -31,60 +30,39 @@ export const TicTacToeContext = createContext<TicTacToeContextValue>({
     takeTurn: () => {},
 })
 
-// const reducer = (state, action) => {
-//     switch (action.name) {
-//         case "game-update"
-//     }
-// }
-
-export const TicTacToeProvider = ({ children }: { children: ReactNode }) => {
+const useSyncGame = () => {
     const { player } = useManager()
+    const { subscribe, unsubscribe, send } = usePeerConnection()
     const { state, setup, ready, finish } = useGame()
-    const { send, subscribe } = usePeerConnection()
-    const [token] = useState<Token>(player?.host ? "O" : "X")
     const [turn, setTurn] = useState<Token>("O")
     const [spaces, setSpaces] = useState<Board>(new Array(9).fill(undefined))
 
-    useEffect(() => {
-        if (player?.host) {
-            send("game-update", { turn, spaces })
-        }
-    }, [player, turn, spaces, send])
-
-    const takePlayerTurn = useCallback(
-        (playerToken: Token, position: number) => {
-            if (playerToken !== "O" && playerToken !== "X") {
-                throw Error("Invalid player")
-            }
-
-            if (playerToken !== turn) {
-                throw Error("Incorrect player turn")
-            }
-
-            if (position < 0 || position > 8) {
-                throw Error("Invalid position, out of range")
-            }
-
-            if (spaces[position]) {
-                throw Error("Invalid position, space take")
-            }
-
-            console.debug(
-                `Placing token ${playerToken} at position ${position}`,
-            )
-            setSpaces((value) => {
-                const copy = [...value]
-                copy[position] = playerToken
-                return copy
-            })
-        },
-        [turn, spaces],
-    )
-
     const handlePlayerMove = useCallback(
-        (_: Token, position: number) => {
+        (token: Token, position: number) => {
             if (player?.host) {
-                takePlayerTurn(turn, position)
+                if (token !== "O" && token !== "X") {
+                    throw Error("Invalid player")
+                }
+
+                if (token !== turn) {
+                    throw Error("Incorrect player turn")
+                }
+
+                if (position < 0 || position > 8) {
+                    throw Error("Invalid position, out of range")
+                }
+
+                if (spaces[position]) {
+                    throw Error("Invalid position, space take")
+                }
+
+                console.debug(`Placing token ${token} at position ${position}`)
+
+                setSpaces((value) => {
+                    const copy = [...value]
+                    copy[position] = token
+                    return copy
+                })
 
                 setTurn((old) => (old === "O" ? "X" : "O"))
 
@@ -98,11 +76,20 @@ export const TicTacToeProvider = ({ children }: { children: ReactNode }) => {
                 )
             }
         },
-        [player, turn, takePlayerTurn],
+        [player?.host, spaces, turn],
     )
 
     useEffect(() => {
-        subscribe((_, data) => {
+        if (player?.host) {
+            send("game-update", { turn, spaces })
+        }
+    }, [player, turn, spaces, send])
+
+    useEffect(() => {
+        const onDataChannelMessage: DataChannelMessageHandler = (
+            peer,
+            data,
+        ) => {
             if (player?.host) {
                 if (data.name === "player-input") {
                     // There is no map betweem the peer and the other player token,
@@ -125,10 +112,25 @@ export const TicTacToeProvider = ({ children }: { children: ReactNode }) => {
                     }
                 }
             }
-        })
+        }
+
+        subscribe(onDataChannelMessage)
 
         setup()
-    }, [subscribe, player, handlePlayerMove, state, setup])
+
+        return () => {
+            unsubscribe(onDataChannelMessage)
+        }
+    }, [subscribe, player?.host, handlePlayerMove, ready, setup, state])
+
+    return { turn, spaces, handlePlayerMove }
+}
+
+export const TicTacToeProvider = ({ children }: { children: ReactNode }) => {
+    const { player } = useManager()
+    const { send } = usePeerConnection()
+    const [token] = useState<Token>(player?.host ? "O" : "X")
+    const { turn, spaces, handlePlayerMove } = useSyncGame()
 
     const takeTurn = useCallback(
         (position: number) => {

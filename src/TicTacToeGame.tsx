@@ -1,3 +1,4 @@
+import { useGame } from "./multiplayer-lib/useGame"
 import { useTicTacToe } from "./useTicTacToe"
 
 type SquareValue = "X" | "O" | undefined
@@ -70,6 +71,7 @@ const Board = ({
 }
 
 export const TicTacToeGame = () => {
+    const { state } = useGame()
     const { spaces, token, turn, takeTurn } = useTicTacToe()
 
     const handleClick = (position: number) => {
@@ -80,5 +82,10 @@ export const TicTacToeGame = () => {
         }
     }
 
-    return <Board squares={spaces} onClick={handleClick} />
+    return (
+        <>
+            <Board squares={spaces} onClick={handleClick} />
+            <div>Game State: {state}</div>
+        </>
+    )
 }
