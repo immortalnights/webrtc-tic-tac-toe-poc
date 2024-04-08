@@ -9,6 +9,10 @@ import {
 import { usePeerConnection } from "./multiplayer-lib/usePeerConnection"
 import { useManager } from "./multiplayer-lib"
 import { useGame } from "./multiplayer-lib/useGame"
+import {
+    usePeerConnection,
+    type DataChannelMessageHandler,
+} from "./multiplayer-lib/PeerConnection"
 
 type Token = "O" | "X"
 type Board = (undefined | Token)[]

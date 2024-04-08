@@ -5,10 +5,12 @@ import {
     RoomRecord,
 } from "game-signaling-server"
 import { useState, useCallback, useSyncExternalStore } from "react"
-import { usePeerConnection } from "./usePeerConnection"
-import { PeerConnectionStatus } from "./PeerConnectionStatus"
-import { useWebSocket } from "./useWebSocket"
-import { useManager } from "."
+import {
+    useManager,
+    useWebSocket,
+    usePeerConnection,
+    PeerConnectionStatus,
+} from "."
 
 const useSyncRoom = ({
     localPlayerId,

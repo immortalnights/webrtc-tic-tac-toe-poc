@@ -5,10 +5,12 @@ export { useManager } from "./useManager.js"
 export { ManagerProvider } from "./ManagerProvider.js"
 export { useWebSocket } from "./useWebSocket.js"
 export { useLobby } from "./useLobby.js"
-export { usePeerConnection } from "./usePeerConnection.js"
+export {
+    usePeerConnection,
+    PeerConnectionStatus,
+} from "./PeerConnection/index.js"
 export { RootProvider } from "./RootProvider.js"
 export { LobbyProvider } from "./LobbyProvider.js"
 export { LobbyRoot as Lobby } from "./Lobby.js"
 export { ServerStatus } from "./ServerStatus.js"
-export { PeerConnectionStatus } from "./PeerConnectionStatus.js"
 export { waitFor } from "./utilities.js"

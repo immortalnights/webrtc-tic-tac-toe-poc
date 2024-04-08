@@ -7,6 +7,7 @@ import {
     useState,
 } from "react"
 import { useManager, usePeerConnection } from "."
+import { DataChannelMessageHandler } from "./PeerConnection"
 
 export type GameState = "setup" | "ready" | "playing" | "paused" | "finished"
 export type PlayerGameState =

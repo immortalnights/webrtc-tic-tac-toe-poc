@@ -1,5 +1,5 @@
 import { usePeerConnection } from "./usePeerConnection"
-import { useManager } from "."
+import { useManager } from "../"
 
 export const PeerConnectionStatus = ({
     remotePlayerId,
@@ -25,12 +25,5 @@ export const PeerConnectionStatus = ({
         }
     }
 
-    let content
-    if (!connection) {
-        content = "-"
-    } else {
-        content = `Status: ${connection.status}`
-    }
-
-    return content
+    return connection?.status
 }
