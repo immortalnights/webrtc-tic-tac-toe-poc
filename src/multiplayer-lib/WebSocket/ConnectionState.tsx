@@ -1,19 +1,19 @@
-import { useWebSocket } from "./useWebSocket"
+import { useWebSocket } from "."
 
-export const ServerStatus = () => {
-    const { status, connect, disconnect } = useWebSocket()
+export const ConnectionState = () => {
+    const { state, connect, disconnect } = useWebSocket()
 
     let content
-    if (status === "connected") {
+    if (state === "connected") {
         content = (
             <div>
                 Connected to multiplayer server{" "}
                 <button onClick={() => disconnect()}>Disconnect</button>
             </div>
         )
-    } else if (status === "connecting") {
+    } else if (state === "connecting") {
         content = <div>Connecting to multiplayer server...</div>
-    } else if (status === "disconnected") {
+    } else if (state === "disconnected") {
         content = (
             <div>
                 Not connected to multiplayer server{" "}

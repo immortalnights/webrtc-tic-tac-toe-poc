@@ -2,7 +2,7 @@ import { RoomRecord, RoomState, PlayerRecord } from "game-signaling-server"
 import { useState, useCallback, useEffect, useSyncExternalStore } from "react"
 import { useLobby } from "./useLobby"
 import { useManager } from "./useManager"
-import { useWebSocket } from "./useWebSocket"
+import { useWebSocket } from "./WebSocket"
 import { LobbyRoom } from "./LobbyRoom"
 
 const LobbyRoomItem = ({

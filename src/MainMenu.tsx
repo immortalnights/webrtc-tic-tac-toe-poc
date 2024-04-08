@@ -1,5 +1,5 @@
 import "./App.css"
-import { useWebSocket } from "./multiplayer-lib/useWebSocket"
+import { useWebSocket } from "./multiplayer-lib/WebSocket"
 
 export const MainMenu = ({
     onPlay,
@@ -8,11 +8,11 @@ export const MainMenu = ({
     onPlay: () => void
     onMultiplayer: () => void
 }) => {
-    const { status } = useWebSocket()
+    const { state } = useWebSocket()
 
     return (
         <>
-            <h3>Main Menu ({status})</h3>
+            <h3>Main Menu ({state})</h3>
 
             <div
                 style={{

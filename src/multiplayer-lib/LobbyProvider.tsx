@@ -7,7 +7,7 @@ import {
     useMemo,
     useState,
 } from "react"
-import { useWebSocket } from "./useWebSocket"
+import { useWebSocket } from "./WebSocket"
 import { useManager } from "."
 
 export type ConnectionStatus = "disconnected" | "connecting" | "connected"

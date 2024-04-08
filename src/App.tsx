@@ -1,11 +1,11 @@
 import { useEffect } from "react"
 import "./App.css"
-import { useWebSocket } from "./multiplayer-lib/useWebSocket"
+import { useWebSocket } from "./multiplayer-lib/WebSocket"
 import { MainMenu } from "./MainMenu"
 import {
     RootProvider,
+    WebSocketConnectionState,
     useManager,
-    ServerStatus,
     LobbyProvider,
     Lobby,
 } from "./multiplayer-lib"
@@ -13,15 +13,15 @@ import { LocalGame } from "./LocalGame"
 
 function App() {
     const { state, leaveLobby, joinLobby, leaveGame } = useManager()
-    const { status } = useWebSocket()
+    const { state: webSocketState } = useWebSocket()
 
-    console.debug("App.render")
+    console.debug("App.render", webSocketState)
 
     useEffect(() => {
-        if (status === "disconnected") {
+        if (webSocketState === "disconnected") {
             leaveLobby()
         }
-    }, [status, leaveLobby])
+    }, [webSocketState, leaveLobby])
 
     const handleJoinLobby = () => {
         joinLobby()
@@ -56,7 +56,7 @@ function App() {
 
             <div style={{ marginTop: "20px" }}>
                 <small>
-                    <ServerStatus />
+                    <WebSocketConnectionState />
                 </small>
             </div>
         </div>
