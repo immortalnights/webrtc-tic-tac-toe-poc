@@ -46,8 +46,11 @@ export const store = {
     },
 
     send(name: string, body: object | undefined) {
-        if (ws && this.getState() === "connected") {
+        const state = this.getState()
+        if (ws && state === "connected") {
             ws.send(JSON.stringify({ name, data: body }))
+        } else {
+            console.warn(`Cannot send '${name}' while in '${state}' state`)
         }
     },
 
@@ -88,6 +91,7 @@ export const store = {
 
             // Attempt connection
             ws = new WebSocket(`ws://${address}/`, [])
+            this.notify()
 
             ws.onopen = handleOpen
             ws.onmessage = handleMessage
@@ -102,6 +106,7 @@ export const store = {
         if (ws) {
             if (this.getState() === "connected") {
                 ws.close(3000, "Disconnected by user")
+                this.notify()
             }
         }
     },
