@@ -41,6 +41,10 @@ export const store = {
         }
     },
 
+    unsubscribe(onStoreChange: () => void) {
+        subscribers.delete(onStoreChange)
+    },
+
     notify() {
         subscribers.forEach((callback) => callback())
     },
@@ -68,7 +72,10 @@ export const store = {
                 if (onWebSocketMessage.size > 0) {
                     onWebSocketMessage.forEach((callback) => callback(json))
                 } else {
-                    console.warn("No callback to handle WebSocket message")
+                    console.warn(
+                        `No callback to handle WebSocket message`,
+                        json,
+                    )
                 }
             }
 

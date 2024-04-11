@@ -11,7 +11,7 @@ import { ConnectionState, WebSocketMessageHandler } from "./types"
 
 interface WebSocketContextValue {
     state: ConnectionState
-    connect: () => void
+    connect: () => Promise<void>
     subscribe: (callback: WebSocketMessageHandler) => void
     unsubscribe: (callback: WebSocketMessageHandler) => void
     disconnect: () => void
@@ -25,7 +25,9 @@ interface WebSocketContextValue {
 
 export const WebSocketContext = createContext<WebSocketContextValue>({
     state: "disconnected",
-    connect: () => {},
+    connect: () => {
+        throw new Error("Missing WebSocket Context Provider")
+    },
     subscribe: () => {},
     unsubscribe: () => {},
     disconnect: () => {},
@@ -48,7 +50,61 @@ export const WebSocketProvider = ({
     )
 
     const connect = useCallback(() => {
-        webSocketStore.connect(address)
+        const state = webSocketStore.getState()
+        let ret
+        switch (state) {
+            case "connected": {
+                ret = Promise.resolve()
+                break
+            }
+            case "disconnected": {
+                ret = new Promise<void>((resolve, reject) => {
+                    const handleStateChange = () => {
+                        const state = webSocketStore.getState()
+                        if (state === "connected") {
+                            webSocketStore.unsubscribe(handleStateChange)
+                            resolve()
+                        } else if (state === "disconnected") {
+                            webSocketStore.unsubscribe(handleStateChange)
+                            reject()
+                        }
+
+                        // TODO timeout
+                    }
+
+                    webSocketStore.subscribe(handleStateChange)
+                    webSocketStore.connect(address)
+                })
+                break
+            }
+            case "connecting": {
+                ret = new Promise<void>((resolve, reject) => {
+                    const handleStateChange = () => {
+                        const state = webSocketStore.getState()
+                        if (state === "connected") {
+                            webSocketStore.unsubscribe(handleStateChange)
+                            resolve()
+                        } else if (state === "disconnected") {
+                            webSocketStore.unsubscribe(handleStateChange)
+                            reject()
+                        }
+
+                        // TODO timeout
+                    }
+
+                    webSocketStore.subscribe(handleStateChange)
+                })
+                break
+            }
+            default: {
+                ret = Promise.reject(
+                    new Error(`Cannot connect while in '${state}' state`),
+                )
+                break
+            }
+        }
+
+        return ret
     }, [address])
 
     const disconnect = useCallback(() => {
@@ -72,7 +128,7 @@ export const WebSocketProvider = ({
             return new Promise<object | undefined>((resolve, reject) => {
                 const handleReply: WebSocketMessageHandler = ({
                     name,
-                    body,
+                    data: body,
                 }) => {
                     if (name === replyName) {
                         webSocketStore.removeMessageListener(handleReply)
@@ -99,7 +155,15 @@ export const WebSocketProvider = ({
             send,
             sendWithReply,
         }),
-        [state],
+        [
+            state,
+            connect,
+            disconnect,
+            subscribe,
+            unsubscribe,
+            send,
+            sendWithReply,
+        ],
     )
 
     useEffect(() => {
