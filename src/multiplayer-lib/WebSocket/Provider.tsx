@@ -4,49 +4,38 @@ import {
     useCallback,
     useEffect,
     useMemo,
-    useRef,
-    useState,
+    useSyncExternalStore,
 } from "react"
-
-export type ConnectionStatus = "disconnected" | "connecting" | "connected"
+import { store as webSocketStore } from "./store"
+import { ConnectionState, WebSocketMessageHandler } from "./types"
 
 interface WebSocketContextValue {
-    status: ConnectionStatus
+    state: ConnectionState
     connect: () => Promise<void>
-    subscribe: (name: string, callback: (data: object) => void) => void
-    unsubscribe: (name: string, callback: (data: object) => void) => void
+    subscribe: (callback: WebSocketMessageHandler) => void
+    unsubscribe: (callback: WebSocketMessageHandler) => void
+    disconnect: () => void
     send: (name: string, data: object | undefined) => void
     sendWithReply: (
         name: string,
         data: object | undefined,
         replyName: string,
     ) => Promise<object | undefined>
-    disconnect: () => void
 }
 
 export const WebSocketContext = createContext<WebSocketContextValue>({
-    status: "disconnected",
-    connect: () =>
-        Promise.reject(new Error("Missing WebSocket Context Provider")),
-    subscribe: () => {
+    state: "disconnected",
+    connect: () => {
         throw new Error("Missing WebSocket Context Provider")
     },
-    unsubscribe: () => {
-        throw new Error("Missing WebSocket Context Provider")
-    },
-    send: () => {
-        throw new Error("Missing WebSocket Context Provider")
-    },
-    sendWithReply: () =>
-        Promise.reject(new Error("Missing WebSocket Context Provider")),
-    disconnect: () => {
+    subscribe: () => {},
+    unsubscribe: () => {},
+    disconnect: () => {},
+    send: () => {},
+    sendWithReply: () => {
         throw new Error("Missing WebSocket Context Provider")
     },
 })
-
-interface Subscription {
-    [key: string]: ((data: object) => void)[]
-}
 
 export const WebSocketProvider = ({
     address = "127.0.0.1:9001",
@@ -55,238 +44,133 @@ export const WebSocketProvider = ({
     address?: string
     children: ReactNode
 }) => {
-    const ws = useRef<WebSocket>()
-    const [status, setStatus] = useState<ConnectionStatus>("disconnected")
-    const [subscriptions, setSubscriptions] = useState<Subscription>({})
-
-    // Used by `handleClose` so needs to be defined before it.
-    const disconnect = useCallback(() => {
-        if (ws.current) {
-            console.log("Disconnecting...")
-            if (ws.current.readyState === WebSocket.OPEN) {
-                ws.current.close()
-                ws.current.onopen = null
-            } else {
-                const socket = ws.current
-                socket.onopen = () => {
-                    socket.close()
-                    socket.onopen = null
-                }
-            }
-            ws.current.onmessage = null
-            ws.current.onclose = null
-            ws.current.onerror = null
-        }
-
-        setStatus("disconnected")
-        ws.current = undefined
-    }, [])
-
-    const handleOpen = useCallback((event: Event) => {
-        console.debug("WebSocket.handleOpen", event)
-
-        if (!ws.current) {
-            throw new Error("WebSocket has not been initialized")
-        }
-
-        setStatus(
-            ws.current.readyState === WebSocket.OPEN
-                ? "connected"
-                : "disconnected",
-        )
-    }, [])
-
-    const handleMessage = useCallback(
-        (event: MessageEvent) => {
-            console.debug("WebSocket.handleMessage", event)
-
-            if (!ws.current) {
-                throw new Error("WebSocket has not been initialized")
-            }
-
-            const message = JSON.parse(event.data)
-
-            const name = message.name
-            const body = message.data
-
-            if (subscriptions[name]) {
-                subscriptions[name].forEach((callback) => {
-                    callback(body)
-                })
-            } else {
-                console.debug(`No subscribers for ${name}`, subscriptions)
-            }
-        },
-        [subscriptions],
+    const state = useSyncExternalStore(
+        webSocketStore.subscribe,
+        webSocketStore.getState,
     )
 
-    const handleClose = useCallback(
-        (event: Event) => {
-            console.debug("WebSocket.handleClose", event)
-
-            if (!ws.current) {
-                throw new Error("WebSocket has not been initialized")
+    const connect = useCallback(() => {
+        const state = webSocketStore.getState()
+        let ret
+        switch (state) {
+            case "connected": {
+                ret = Promise.resolve()
+                break
             }
+            case "disconnected": {
+                ret = new Promise<void>((resolve, reject) => {
+                    const handleStateChange = () => {
+                        const state = webSocketStore.getState()
+                        if (state === "connected") {
+                            webSocketStore.unsubscribe(handleStateChange)
+                            resolve()
+                        } else if (state === "disconnected") {
+                            webSocketStore.unsubscribe(handleStateChange)
+                            reject()
+                        }
 
-            disconnect()
-        },
-        [disconnect],
-    )
-
-    const handleError = useCallback((event: Event) => {
-        console.debug("WebSocket.handleError", event)
-
-        if (!ws.current) {
-            throw new Error("WebSocket has not been initialized")
-        }
-    }, [])
-
-    const connect = useCallback(async () => {
-        console.log("Connecting...")
-        setStatus("connecting")
-        ws.current = new WebSocket(`ws://${address}/`, [])
-
-        const tick = 250
-        return new Promise<void>((resolve, reject) => {
-            const checkConnection = () => {
-                if (ws.current) {
-                    if (ws.current.readyState === WebSocket.CONNECTING) {
-                        window.setTimeout(checkConnection, tick)
-                    } else if (ws.current.readyState === WebSocket.OPEN) {
-                        resolve()
-                    } else {
-                        reject(new Error("Failed to connect"))
+                        // TODO timeout
                     }
-                } else {
-                    reject(new Error("Invalid WebSocket instance"))
-                }
-            }
 
-            setTimeout(checkConnection, tick)
-        })
+                    webSocketStore.subscribe(handleStateChange)
+                    webSocketStore.connect(address)
+                })
+                break
+            }
+            case "connecting": {
+                ret = new Promise<void>((resolve, reject) => {
+                    const handleStateChange = () => {
+                        const state = webSocketStore.getState()
+                        if (state === "connected") {
+                            webSocketStore.unsubscribe(handleStateChange)
+                            resolve()
+                        } else if (state === "disconnected") {
+                            webSocketStore.unsubscribe(handleStateChange)
+                            reject()
+                        }
+
+                        // TODO timeout
+                    }
+
+                    webSocketStore.subscribe(handleStateChange)
+                })
+                break
+            }
+            default: {
+                ret = Promise.reject(
+                    new Error(`Cannot connect while in '${state}' state`),
+                )
+                break
+            }
+        }
+
+        return ret
     }, [address])
 
-    const subscribe = useCallback(
-        (name: string, callback: (data: object) => void) => {
-            setSubscriptions((prevSubscriptions) => ({
-                ...prevSubscriptions,
-                [name]: [...(prevSubscriptions[name] || []), callback],
-            }))
-        },
-        [],
-    )
+    const disconnect = useCallback(() => {
+        webSocketStore.disconnect()
+    }, [])
 
-    const unsubscribe = useCallback(
-        (name: string, callback: (data: object) => void) => {
-            setSubscriptions((prevSubscriptions) =>
-                prevSubscriptions[name]
-                    ? {
-                          ...prevSubscriptions,
-                          [name]: prevSubscriptions[name].filter(
-                              (cb) => cb !== callback,
-                          ),
-                      }
-                    : {},
-            )
-        },
-        [],
-    )
+    const subscribe = useCallback((callback: WebSocketMessageHandler) => {
+        webSocketStore.addMessageListener(callback)
+    }, [])
 
-    const send = useCallback((name: string, data: object | undefined) => {
-        if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-            console.debug(`Sending ${name}`)
-            ws.current.send(
-                JSON.stringify({
-                    name,
-                    data,
-                }),
-            )
-        } else {
-            console.error("WebSocket is not open")
-        }
+    const unsubscribe = useCallback((callback: WebSocketMessageHandler) => {
+        webSocketStore.removeMessageListener(callback)
+    }, [])
+
+    const send = useCallback((name: string, body: object | undefined) => {
+        webSocketStore.send(name, body)
     }, [])
 
     const sendWithReply = useCallback(
-        (name: string, data: object | undefined, replyName: string) => {
+        (name: string, body: object | undefined, replyName: string) => {
             return new Promise<object | undefined>((resolve, reject) => {
-                if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-                    const timeout = window.setTimeout(() => {
-                        reject(`Timeout waiting for ${replyName} message`)
-                        ws.current?.removeEventListener(
-                            "message",
-                            handleMessage,
-                        )
-                    }, 5000)
-
-                    const handleMessage = (event: MessageEvent) => {
-                        const reply = JSON.parse(event.data)
-                        if (reply.name === replyName) {
-                            window.clearTimeout(timeout)
-                            ws.current?.removeEventListener(
-                                "message",
-                                handleMessage,
-                            )
-                            resolve(reply.data)
-                        }
+                const handleReply: WebSocketMessageHandler = ({
+                    name,
+                    body,
+                }) => {
+                    if (name === replyName) {
+                        webSocketStore.removeMessageListener(handleReply)
+                        resolve(body)
                     }
 
-                    ws.current.addEventListener("message", handleMessage)
-                    send(name, data)
-                } else {
-                    console.error("WebSocket is not open")
-                    reject("WebSocket is not open")
+                    // TODO timeout?
                 }
+
+                webSocketStore.addMessageListener(handleReply)
+                webSocketStore.send(name, body)
             })
         },
-        [send],
+        [],
     )
 
-    useEffect(() => {
-        if (ws.current && (status === "connected" || status === "connecting")) {
-            ws.current.onopen = handleOpen
-            ws.current.onmessage = handleMessage
-            ws.current.onclose = handleClose
-            ws.current.onerror = handleError
-        }
-
-        return () => {
-            if (ws.current) {
-                ws.current.onopen = null
-                ws.current.onmessage = null
-                ws.current.onclose = null
-                ws.current.onerror = null
-            }
-        }
-    }, [status, handleOpen, handleMessage, handleClose, handleError])
-
-    useEffect(() => {
-        // Clean up on unmount
-        return () => {
-            setSubscriptions({})
-            disconnect()
-        }
-    }, [disconnect])
-
-    const value = useMemo(
+    const value = useMemo<WebSocketContextValue>(
         () => ({
-            status,
+            state,
             connect,
+            disconnect,
             subscribe,
             unsubscribe,
             send,
             sendWithReply,
-            disconnect,
         }),
         [
-            status,
+            state,
             connect,
+            disconnect,
             subscribe,
             unsubscribe,
             send,
             sendWithReply,
-            disconnect,
         ],
     )
+
+    useEffect(() => {
+        return () => {
+            webSocketStore.disconnect()
+        }
+    }, [address])
 
     return (
         <WebSocketContext.Provider value={value}>

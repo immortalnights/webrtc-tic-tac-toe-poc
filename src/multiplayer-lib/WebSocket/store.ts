@@ -52,7 +52,7 @@ export const store = {
     send(name: string, body: object | undefined) {
         const state = this.getState()
         if (ws && state === "connected") {
-            ws.send(JSON.stringify({ name, data: body }))
+            ws.send(JSON.stringify({ name, body }))
         } else {
             console.warn(`Cannot send '${name}' while in '${state}' state`)
         }

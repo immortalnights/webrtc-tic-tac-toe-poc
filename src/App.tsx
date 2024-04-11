@@ -6,18 +6,12 @@ import {
     RootProvider,
     WebSocketConnectionState,
     useManager,
-    LobbyProvider,
     Lobby,
 } from "./multiplayer-lib"
 import { LocalGame } from "./LocalGame"
 
 function App() {
-    const {
-        state,
-        leaveLobby,
-        joinLobby: handleJoinLobby,
-        leaveGame,
-    } = useManager()
+    const { state, joinLobby: handleJoinLobby, leaveGame } = useManager()
     const { state: webSocketState } = useWebSocket()
     console.debug("App.render", state, webSocketState)
 
@@ -29,11 +23,7 @@ function App() {
             )
             break
         case "lobby":
-            content = (
-                <LobbyProvider>
-                    <Lobby />
-                </LobbyProvider>
-            )
+            content = <Lobby />
             break
         case "in-game":
             content = <LocalGame onLeave={leaveGame} />

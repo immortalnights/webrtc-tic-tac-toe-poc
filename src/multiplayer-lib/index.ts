@@ -4,12 +4,10 @@ export { RemotePlayer } from "./RemotePlayer.js"
 export { useManager } from "./useManager.js"
 export { ManagerProvider } from "./ManagerProvider.js"
 export { useWebSocket, WebSocketConnectionState } from "./WebSocket/index.js"
-export { useLobby } from "./useLobby.js"
 export {
     usePeerConnection,
     PeerConnectionStatus,
 } from "./PeerConnection/index.js"
 export { RootProvider } from "./RootProvider.js"
-export { LobbyProvider } from "./LobbyProvider.js"
 export { LobbyRoot as Lobby } from "./Lobby.js"
 export { waitFor } from "./utilities.js"

@@ -1,3 +1,3 @@
 export { useWebSocket } from "./useWebSocket"
-export { WebSocketProvider } from "./Provider2"
+export { WebSocketProvider } from "./Provider"
 export { ConnectionState as WebSocketConnectionState } from "./ConnectionState"

@@ -1,9 +1,15 @@
-import { RoomRecord, RoomState, PlayerRecord } from "game-signaling-server"
-import { useState, useCallback, useEffect, useSyncExternalStore } from "react"
-import { useLobby } from "./useLobby"
+import {
+    RoomRecord,
+    RoomState,
+    PlayerRecord,
+    GameOptions,
+    throwError,
+} from "game-signaling-server"
+import { useState, useCallback, useEffect } from "react"
 import { useManager } from "./useManager"
 import { useWebSocket } from "./WebSocket"
 import { LobbyRoom } from "./LobbyRoom"
+import { WebSocketMessageHandler } from "./WebSocket/types"
 
 const LobbyRoomItem = ({
     room,
@@ -38,15 +44,76 @@ const LobbyRoomItem = ({
     )
 }
 
-const useSyncLobby = () => {
-    const {
-        sendWithReply,
-        subscribe: socketSubscribe,
-        unsubscribe: socketUnsubscribe,
-    } = useWebSocket()
+const Lobby = () => {
+    const { joinRoom, leaveLobby } = useManager()
+    const { send, sendWithReply, subscribe, unsubscribe } = useWebSocket()
     const [rooms, setRooms] = useState<RoomRecord[]>([])
 
-    const subscribe = useCallback(() => {
+    const handleHost = useCallback(
+        async (
+            name: string = "MyGame",
+            options: GameOptions = { maxPlayers: 4 },
+        ) => {
+            const sessionDescription = undefined
+            const iceCandidates: unknown[] = []
+
+            const reply = sendWithReply(
+                "player-host-game",
+                {
+                    name,
+                    options,
+                    sessionDescription,
+                    iceCandidates,
+                    autoReady: true,
+                },
+                "player-host-game-reply",
+            )
+
+            reply.then((reply) => {
+                const room =
+                    reply && "id" in reply
+                        ? (reply as RoomRecord)
+                        : throwError("Failed to receive room from reply")
+
+                joinRoom(room, true)
+            })
+
+            return reply
+        },
+        [sendWithReply, joinRoom],
+    )
+
+    const handleJoin = useCallback(
+        async (room: RoomRecord) => {
+            const reply = sendWithReply(
+                "player-join-room",
+                {
+                    room: room.id,
+                    autoReady: true,
+                },
+                "player-join-room-reply",
+            )
+
+            reply.then((reply) => {
+                const room =
+                    reply && "id" in reply
+                        ? (reply as RoomRecord)
+                        : throwError("Failed to receive room from reply")
+
+                joinRoom(room, false)
+            })
+
+            return reply
+        },
+        [sendWithReply, joinRoom],
+    )
+
+    const handleLeave = useCallback(() => {
+        send("player-leave-lobby", undefined)
+        leaveLobby()
+    }, [send, leaveLobby])
+
+    useEffect(() => {
         const handlePlayerConnected = (otherPlayer: PlayerRecord) => {
             console.debug(`Player ${otherPlayer.name} connected to lobby`)
         }
@@ -87,50 +154,32 @@ const useSyncLobby = () => {
         })
 
         sendWithReply(
-            "player-list-games",
+            "player-list-rooms",
             { name },
-            "player-list-games-reply",
+            "player-list-rooms-reply",
         ).then((data: object | undefined) => {
-            console.log("Got games: ", data.games)
-            setRooms(data.games as unknown as RoomRecord[])
+            if (data && "rooms" in data) {
+                console.log("Got rooms: ", data.rooms)
+                setRooms(data.rooms as unknown as RoomRecord[])
+            }
         })
 
-        // Object.entries(subscriptions).forEach(([name, callback]) => {
-        //     socketSubscribe(callback)
-        // })
-
-        // return () => {
-        //     Object.entries(subscriptions).forEach(([name, callback]) => {
-        //         socketUnsubscribe(callback)
-        //     })
-        // }
-    }, [sendWithReply, socketSubscribe, socketUnsubscribe])
-
-    const getSnapshot = useCallback(() => rooms, [rooms])
-
-    return useSyncExternalStore(subscribe, getSnapshot)
-}
-
-const Lobby = () => {
-    const { joinRoom, leaveLobby } = useManager()
-    const { host, join } = useLobby()
-    const rooms = useSyncLobby()
-
-    const handleHost = async () => {
-        const newRoom = await host("MyGame", {
-            maxPlayers: 4,
-        })
-        if (newRoom) {
-            joinRoom(newRoom)
+        const handleSocketMessage: WebSocketMessageHandler = ({
+            name,
+            body,
+        }) => {
+            if (Object.keys(subscriptions).includes(name)) {
+                const key = name as keyof typeof subscriptions
+                subscriptions[key](body as never)
+            }
         }
-    }
 
-    const handleJoin = async (room: RoomRecord) => {
-        const newRoom = await join(room)
-        if (newRoom) {
-            joinRoom(newRoom)
+        subscribe(handleSocketMessage)
+
+        return () => {
+            unsubscribe(handleSocketMessage)
         }
-    }
+    }, [sendWithReply, subscribe, unsubscribe])
 
     return (
         <div>
@@ -154,36 +203,29 @@ const Lobby = () => {
                 {rooms.length === 0 && <div>No games</div>}
             </div>
             <div>
-                <button onClick={handleHost}>Host</button>
-                <button onClick={leaveLobby}>Leave</button>
+                <button onClick={() => handleHost()}>Host</button>
+                <button onClick={handleLeave}>Leave</button>
             </div>
         </div>
     )
 }
 
 export const LobbyRoot = () => {
-    const { state: socketState } = useWebSocket()
+    const { state } = useWebSocket()
     const { player: localPlayer, room, leaveLobby } = useManager()
-    const { status, connect, disconnect } = useLobby()
     console.debug("Lobby.render", status, room)
 
     useEffect(() => {
-        if (status === "connected" && socketState === "disconnected") {
+        if (state === "disconnected") {
             leaveLobby()
         }
-    }, [status, socketState, leaveLobby])
+    }, [state, leaveLobby])
 
     let content
-    if (status === "connected") {
-        if (room) {
-            content = <LobbyRoom localPlayerId={localPlayer!.id} room={room} />
-        } else {
-            content = <Lobby />
-        }
-    } else if (status === "connecting") {
-        content = <div>Connecting</div>
-    } else if (status === "disconnected") {
-        content = <div>Disconnected</div>
+    if (room) {
+        content = <LobbyRoom localPlayerId={localPlayer!.id} room={room} />
+    } else {
+        content = <Lobby />
     }
 
     return content
