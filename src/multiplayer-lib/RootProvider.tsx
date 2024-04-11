@@ -4,9 +4,9 @@ import { WebSocketProvider } from "./WebSocket/Provider2"
 import { PeerConnectionProvider } from "./PeerConnection"
 
 export const RootProvider = ({ children }: { children: ReactNode }) => (
-    <ManagerProvider>
-        <WebSocketProvider>
+    <WebSocketProvider>
+        <ManagerProvider>
             <PeerConnectionProvider>{children}</PeerConnectionProvider>
-        </WebSocketProvider>
-    </ManagerProvider>
+        </ManagerProvider>
+    </WebSocketProvider>
 )

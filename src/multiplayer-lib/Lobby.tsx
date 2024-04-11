@@ -95,15 +95,15 @@ const useSyncLobby = () => {
             setRooms(data.games as unknown as RoomRecord[])
         })
 
-        Object.entries(subscriptions).forEach(([name, callback]) => {
-            socketSubscribe(name, callback)
-        })
+        // Object.entries(subscriptions).forEach(([name, callback]) => {
+        //     socketSubscribe(callback)
+        // })
 
-        return () => {
-            Object.entries(subscriptions).forEach(([name, callback]) => {
-                socketUnsubscribe(name, callback)
-            })
-        }
+        // return () => {
+        //     Object.entries(subscriptions).forEach(([name, callback]) => {
+        //         socketUnsubscribe(callback)
+        //     })
+        // }
     }, [sendWithReply, socketSubscribe, socketUnsubscribe])
 
     const getSnapshot = useCallback(() => rooms, [rooms])
@@ -162,22 +162,16 @@ const Lobby = () => {
 }
 
 export const LobbyRoot = () => {
+    const { state: socketState } = useWebSocket()
     const { player: localPlayer, room, leaveLobby } = useManager()
     const { status, connect, disconnect } = useLobby()
     console.debug("Lobby.render", status, room)
 
     useEffect(() => {
-        if (status === "disconnected") {
-            connect()
+        if (status === "connected" && socketState === "disconnected") {
+            leaveLobby()
         }
-
-        // Automatically leaving the Lobby causes a lot of issues...
-        // return () => {
-        //     if (status === "connected") {
-        //         leaveLobby()
-        //     }
-        // }
-    }, [status, connect, disconnect, leaveLobby])
+    }, [status, socketState, leaveLobby])
 
     let content
     if (status === "connected") {

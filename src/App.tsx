@@ -12,20 +12,14 @@ import {
 import { LocalGame } from "./LocalGame"
 
 function App() {
-    const { state, leaveLobby, joinLobby, leaveGame } = useManager()
+    const {
+        state,
+        leaveLobby,
+        joinLobby: handleJoinLobby,
+        leaveGame,
+    } = useManager()
     const { state: webSocketState } = useWebSocket()
-
-    console.debug("App.render", webSocketState)
-
-    useEffect(() => {
-        if (webSocketState === "disconnected") {
-            leaveLobby()
-        }
-    }, [webSocketState, leaveLobby])
-
-    const handleJoinLobby = () => {
-        joinLobby()
-    }
+    console.debug("App.render", state, webSocketState)
 
     let content
     switch (state) {
