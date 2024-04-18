@@ -11,22 +11,20 @@ import {
 import { LocalGame } from "./LocalGame"
 
 function App() {
-    const { state, joinLobby: handleJoinLobby, leaveGame } = useManager()
     const { state: webSocketState } = useWebSocket()
+    const { state } = useManager()
     console.debug("App.render", state, webSocketState)
 
     let content
     switch (state) {
         case "main-menu":
-            content = (
-                <MainMenu onPlay={() => {}} onMultiplayer={handleJoinLobby} />
-            )
+            content = <MainMenu />
             break
         case "lobby":
             content = <Lobby />
             break
         case "in-game":
-            content = <LocalGame onLeave={leaveGame} />
+            content = <LocalGame />
             break
         default:
             break

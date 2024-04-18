@@ -1,14 +1,10 @@
 import "./App.css"
+import { useManager } from "./multiplayer-lib"
 import { useWebSocket } from "./multiplayer-lib/WebSocket"
 
-export const MainMenu = ({
-    onPlay,
-    onMultiplayer: onMultiplayer,
-}: {
-    onPlay: () => void
-    onMultiplayer: () => void
-}) => {
+export const MainMenu = () => {
     const { state } = useWebSocket()
+    const { joinGame, joinLobby } = useManager()
 
     return (
         <>
@@ -21,8 +17,8 @@ export const MainMenu = ({
                     flexDirection: "column",
                 }}
             >
-                <button onClick={onPlay}>Play</button>
-                <button onClick={onMultiplayer}>Multiplayer</button>
+                <button onClick={() => joinGame("local")}>Play</button>
+                <button onClick={joinLobby}>Multiplayer</button>
             </div>
         </>
     )
