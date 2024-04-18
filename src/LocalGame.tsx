@@ -1,9 +1,24 @@
 import { TicTacToeGame } from "./TicTacToeGame"
 import { TicTacToeProvider } from "./TicTacToeProvider"
-import { PeerConnectionStatus } from "./multiplayer-lib"
+import {
+    PeerConnectionStatus,
+    useManager,
+    usePeerConnection,
+    useWebSocket,
+} from "./multiplayer-lib"
 import { GameProvider } from "./multiplayer-lib/GameProvider"
 
-export const LocalGame = ({ onLeave }: { onLeave: () => void }) => {
+export const LocalGame = () => {
+    const { leaveGame } = useManager()
+    const { send } = useWebSocket()
+    const { close } = usePeerConnection()
+
+    const handleLeave = () => {
+        close()
+        send("player-leave-room", undefined)
+        leaveGame()
+    }
+
     return (
         <GameProvider>
             <TicTacToeProvider>
@@ -13,7 +28,7 @@ export const LocalGame = ({ onLeave }: { onLeave: () => void }) => {
                     </div>
                     <TicTacToeGame />
                     <div>
-                        <button onClick={onLeave}>Leave</button>
+                        <button onClick={handleLeave}>Leave</button>
                     </div>
                 </div>
             </TicTacToeProvider>
