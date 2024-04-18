@@ -1,4 +1,4 @@
-import { ConnectionMap, DataChannelMessageHandler } from "./types"
+import { Connection, ConnectionMap, DataChannelMessageHandler } from "./types"
 
 let connections: ConnectionMap = {}
 const onDataChannelMessage = new Set<DataChannelMessageHandler>()
@@ -72,7 +72,9 @@ export const peerConnectionStore = {
     },
 
     listenToDataChannel(peer: string, dc: RTCDataChannel) {
-        this.stopListeningToDataChannel(peer)
+        if (connections[peer]) {
+            this.stopListeningToDataChannel(connections[peer])
+        }
 
         const onOpen = (event: Event) => {
             console.debug("dc.open", event)
@@ -128,8 +130,7 @@ export const peerConnectionStore = {
         }
     },
 
-    stopListeningToDataChannel(peer: string) {
-        const connection = connections[peer]
+    stopListeningToDataChannel(connection: Connection) {
         if (connection?.dc && connection?.eventHandlers) {
             connection.dc.removeEventListener(
                 "open",
@@ -151,9 +152,23 @@ export const peerConnectionStore = {
         }
     },
 
-    removeConnection(peer: string) {
-        this.stopListeningToDataChannel(peer)
-        connections[peer]
+    removeConnection(peer?: string) {
+        if (peer) {
+            if (connections[peer]) {
+                const connection = connections[peer]
+                this.stopListeningToDataChannel(connection)
+                connection.dc?.close()
+                connection.pc?.close()
+                delete connections[peer]
+            }
+        } else {
+            Object.entries(connections).forEach(([_, connection]) => {
+                this.stopListeningToDataChannel(connection)
+                connection.dc?.close()
+                connection.pc?.close()
+            })
+            connections = {}
+        }
         subscribers.forEach((callback) => callback())
     },
 }

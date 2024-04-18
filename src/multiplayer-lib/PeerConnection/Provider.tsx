@@ -34,7 +34,7 @@ export interface PeerConnectionContextValue {
     send: (name: string, body: object, target?: string) => void
     subscribe: (cb: DataChannelMessageHandler) => void
     unsubscribe: (cb: DataChannelMessageHandler) => void
-    close: (peer: string) => void
+    close: (peer?: string) => void
 }
 
 export const PeerConnectionContext = createContext<PeerConnectionContextValue>({
@@ -189,7 +189,7 @@ export const PeerConnectionProvider = ({
         peerConnectionStore.removeMessageCallback(callback)
     }, [])
 
-    const close = useCallback((peer: string) => {
+    const close = useCallback((peer?: string) => {
         peerConnectionStore.removeConnection(peer)
     }, [])
 
