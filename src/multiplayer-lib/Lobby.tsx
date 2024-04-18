@@ -18,6 +18,10 @@ const LobbyRoomItem = ({
     room: RoomRecord
     onJoin: (room: RoomRecord) => void
 }) => {
+    const canJoin =
+        room.state === RoomState.Open &&
+        room.players.length < room.options.maxPlayers
+
     return (
         <div
             style={{
@@ -30,13 +34,7 @@ const LobbyRoomItem = ({
             <div style={{ flexGrow: 1, textAlign: "left" }}>{room.name}</div>
             <div>Players: {room.players.length}</div>
             <div>
-                <button
-                    onClick={() => onJoin(room)}
-                    disabled={
-                        room.state !== RoomState.Open &&
-                        room.players.length >= room.options.maxPlayers
-                    }
-                >
+                <button onClick={() => onJoin(room)} disabled={!canJoin}>
                     Join
                 </button>
             </div>
